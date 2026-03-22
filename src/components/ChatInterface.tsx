@@ -257,7 +257,7 @@ export default function ChatInterface() {
               placeholder="輸入你的行動⋯⋯"
               rows={1}
               disabled={loading}
-              className="flex-1 input-ancient rounded-lg px-3 sm:px-4 py-2.5 text-sm text-ghost-white resize-none disabled:opacity-40"
+              className="flex-1 input-ancient rounded-lg px-3 sm:px-4 py-2.5 text-[15px] resize-none disabled:opacity-40"
             />
             <button
               type="submit"
@@ -302,14 +302,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-ink-spread`}>
-      <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 sm:px-5 py-3 sm:py-4 ${
+      <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 sm:px-5 py-3.5 sm:py-4 ${
         isUser ? "msg-user" : "msg-assistant"
       }`}>
-        <div className="text-sm leading-relaxed whitespace-pre-wrap text-ghost-white/85">
+        {isUser && (
+          <div className="text-[10px] text-ghost-white/30 mb-1.5 tracking-wider">— 你 —</div>
+        )}
+        <div className={`text-[15px] leading-relaxed whitespace-pre-wrap ${
+          isUser ? "text-ghost-white/95" : "text-ghost-white/90"
+        }`}>
           {message.content}
         </div>
         {!isUser && message.model && (
-          <div className="text-[9px] text-gold/20 mt-3 text-right tracking-wider uppercase">
+          <div className="text-[9px] text-gold/25 mt-3 text-right tracking-wider uppercase">
             {message.model}
           </div>
         )}
