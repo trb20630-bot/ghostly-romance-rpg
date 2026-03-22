@@ -42,8 +42,8 @@ export default function CharacterSelect() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="max-w-2xl w-full animate-fade-in-up py-6">
+    <div className="h-[100dvh] flex items-start justify-center overflow-y-auto">
+      <div className="max-w-2xl w-full animate-fade-in-up px-4 pt-[5vh] sm:pt-[8vh] pb-8">
         {/* Title */}
         <div className="text-center mb-10">
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-3">

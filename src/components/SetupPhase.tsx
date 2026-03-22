@@ -28,12 +28,12 @@ export default function SetupPhase() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="w-full max-w-lg animate-fade-in-up py-6">
+    <div className="h-[100dvh] flex items-start justify-center overflow-y-auto">
+      <div className="w-full max-w-lg animate-fade-in-up px-4 pt-[5vh] sm:pt-[8vh] pb-8">
         {/* Title Card */}
-        <div className="text-center mb-8">
-          <div className="inline-block mb-4">
-            <span className="text-5xl sm:text-6xl animate-ghost-float inline-block">🕯️</span>
+        <div className="text-center mb-6">
+          <div className="inline-block mb-3">
+            <span className="text-4xl sm:text-5xl animate-ghost-float inline-block">🕯️</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-3">
             輪 迴 之 門
@@ -45,7 +45,7 @@ export default function SetupPhase() {
         </div>
 
         {/* Form Panel */}
-        <div className="glass-panel ancient-frame corner-decor rounded-2xl p-5 sm:p-8 space-y-6">
+        <div className="glass-panel ancient-frame corner-decor rounded-2xl p-5 sm:p-7 space-y-5">
 
           {/* Age */}
           <div>
