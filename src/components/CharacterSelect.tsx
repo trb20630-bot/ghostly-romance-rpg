@@ -29,15 +29,40 @@ const CHARACTERS = [
   },
 ];
 
-export default function CharacterSelect() {
+export default function CharacterSelect({ playerId }: { playerId?: string }) {
   const { state, dispatch } = useGame();
 
-  function handleSelect(character: "聶小倩" | "寧采臣") {
+  async function handleSelect(character: "聶小倩" | "寧采臣") {
     if (!state.game.player) return;
     dispatch({
       type: "SET_PLAYER",
       payload: { ...state.game.player, character },
     });
+
+    // Create game session in Supabase
+    if (playerId) {
+      try {
+        const res = await fetch("/api/game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerId,
+            slotNumber: 1,
+            playerAge: state.game.player.age,
+            playerGender: state.game.player.gender,
+            playerOccupation: state.game.player.occupation,
+            chosenCharacter: character,
+          }),
+        });
+        const data = await res.json();
+        if (data.session) {
+          dispatch({ type: "SET_SESSION_ID", payload: data.session.id });
+        }
+      } catch {
+        // Continue even if save fails
+      }
+    }
+
     dispatch({ type: "SET_PHASE", payload: "death" });
   }
 

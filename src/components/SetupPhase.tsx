@@ -9,7 +9,7 @@ const OCCUPATIONS = [
   "廚師", "警察",
 ];
 
-export default function SetupPhase() {
+export default function SetupPhase({ playerId }: { playerId?: string }) {
   const { dispatch } = useGame();
   const [age, setAge] = useState(25);
   const [gender, setGender] = useState<"male" | "female" | "other">("male");
@@ -22,7 +22,7 @@ export default function SetupPhase() {
     if (!finalOccupation.trim()) return;
     dispatch({
       type: "SET_PLAYER",
-      payload: { age, gender, occupation: finalOccupation, character: "寧采臣" },
+      payload: { id: playerId, age, gender, occupation: finalOccupation, character: "寧采臣" },
     });
     dispatch({ type: "SET_PHASE", payload: "character" });
   }

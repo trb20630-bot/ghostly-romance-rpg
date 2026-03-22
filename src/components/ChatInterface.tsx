@@ -12,7 +12,7 @@ const PHASE_LABELS: Record<string, string> = {
   ending: "結局",
 };
 
-export default function ChatInterface() {
+export default function ChatInterface({ playerId }: { playerId?: string }) {
   const { state, dispatch } = useGame();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,6 +72,11 @@ export default function ChatInterface() {
         dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
         dispatch({ type: "INCREMENT_ROUND" });
 
+        // Auto-save to Supabase
+        if (game.sessionId) {
+          autoSave(text, data.message, data.model, game.roundNumber + 1);
+        }
+
         if ((game.roundNumber + 1) % 10 === 0 && game.roundNumber > 0) {
           triggerSummarize();
         }
@@ -91,6 +96,28 @@ export default function ChatInterface() {
     },
     [loading, messages, game, memory, dispatch]
   );
+
+  // Auto-save conversation to Supabase
+  async function autoSave(userText: string, aiText: string, model: string, round: number) {
+    try {
+      await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: game.sessionId,
+          roundNumber: round,
+          userMessage: userText,
+          assistantMessage: aiText,
+          model,
+          phase: game.phase,
+          currentLocation: game.currentLocation,
+          isDaytime: game.isDaytime,
+        }),
+      });
+    } catch {
+      // Silent fail — don't interrupt gameplay
+    }
+  }
 
   // Auto-start death phase
   useEffect(() => {
