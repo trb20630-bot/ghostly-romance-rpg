@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1a1a2e;
+  --color-parchment: #f5f0e8;
+  --color-parchment-dark: #e8dcc8;
+  --color-ghost-white: #e8e8f0;
+  --color-blood-red: #8b0000;
+  --color-jade: #2d6a4f;
+  --color-gold: #b8860b;
+  --color-night: #0d1117;
+  --color-night-light: #161b22;
+  --color-lantern: #ff6b35;
+  --color-mist: rgba(200, 200, 220, 0.3);
+
+  --font-serif: "Noto Serif TC", "Source Han Serif TC", serif;
+  --font-sans: "Noto Sans TC", "Source Han Sans TC", sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-night);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-jade);
+  border-radius: 3px;
+}
+
+/* Ghost float animation */
+@keyframes ghost-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes lantern-glow {
+  0%, 100% { opacity: 0.6; filter: blur(8px); }
+  50% { opacity: 1; filter: blur(12px); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes typewriter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-ghost-float {
+  animation: ghost-float 3s ease-in-out infinite;
+}
+
+.animate-lantern-glow {
+  animation: lantern-glow 4s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+.animate-typewriter {
+  animation: typewriter 0.3s ease-out forwards;
+}
+
+/* Mobile safe area for bottom input */
+.safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Ancient Chinese paper texture */
+.paper-texture {
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(139, 69, 19, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 50%, rgba(139, 69, 19, 0.03) 0%, transparent 50%);
+}
