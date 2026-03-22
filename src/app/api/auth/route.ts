@@ -24,13 +24,13 @@ export async function POST(request: NextRequest) {
     if (action === "list") {
       const { data, error } = await supabase
         .from("players")
-        .select("display_name")
+        .select("name")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
       const names = (data || [])
-        .map((p: { display_name: string | null }) => p.display_name)
+        .map((p: { name: string | null }) => p.name)
         .filter(Boolean);
 
       return NextResponse.json({ names });
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       const { data: existing } = await supabase
         .from("players")
         .select("id")
-        .eq("display_name", name.trim())
+        .eq("name", name.trim())
         .maybeSingle();
 
       if (existing) {
@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
       const { data: player, error } = await supabase
         .from("players")
         .insert({
-          display_name: name.trim(),
+          name: name.trim(),
           password: password,
         })
-        .select("id, display_name")
+        .select("id, name")
         .single();
 
       if (error) throw error;
@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
 
       const { data: player, error } = await supabase
         .from("players")
-        .select("id, display_name")
-        .eq("display_name", name.trim())
+        .select("id, name")
+        .eq("name", name.trim())
         .eq("password", password)
         .maybeSingle();
 

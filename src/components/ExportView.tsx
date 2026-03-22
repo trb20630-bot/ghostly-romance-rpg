@@ -71,10 +71,10 @@ export default function ExportView() {
               故 事 已 完 結
             </h1>
             <div className="ancient-divider mx-auto max-w-[160px] mb-4">❖</div>
-            <p className="text-ghost-white/50 text-sm mb-8 leading-relaxed">
+            <p className="text-ghost-white/85 text-sm mb-8 leading-relaxed">
               你的倩女幽魂之旅即將化為一篇完整的故事。
               <br />
-              <span className="text-gold/40">
+              <span className="text-gold/60">
                 共 {messages.filter((m) => m.role !== "system").length} 段對話，{game.roundNumber} 輪冒險。
               </span>
             </p>
@@ -95,7 +95,7 @@ export default function ExportView() {
 
             <button
               onClick={() => dispatch({ type: "RESET" })}
-              className="text-sm text-ghost-white/25 hover:text-ghost-white/50 transition-colors tracking-wider"
+              className="text-sm text-ghost-white/50 hover:text-ghost-white/85 transition-colors tracking-wider"
             >
               重新開始
             </button>
@@ -115,7 +115,7 @@ export default function ExportView() {
             {story.title}
           </h1>
           <div className="ancient-divider mx-auto max-w-[200px] my-4">❖</div>
-          <p className="text-ghost-white/30 text-sm">
+          <p className="text-ghost-white/50 text-sm">
             共 {story.totalWords} 字 · {story.chapters.length} 章
           </p>
         </div>
@@ -131,7 +131,7 @@ export default function ExportView() {
                 {ch.title}
               </h2>
               <div className="ancient-divider mb-5">✦</div>
-              <div className="text-sm text-ghost-white/70 leading-loose whitespace-pre-wrap">
+              <div className="text-sm text-ghost-white/85 leading-loose whitespace-pre-wrap">
                 {ch.content}
               </div>
             </article>

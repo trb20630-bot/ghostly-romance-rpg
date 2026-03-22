@@ -222,7 +222,7 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
               <h1 className="text-xs sm:text-sm text-gold font-bold truncate tracking-wider">
                 {game.player?.character || "倩女幽魂"}
               </h1>
-              <p className="text-[10px] sm:text-xs text-ghost-white/30 truncate">
+              <p className="text-[10px] sm:text-xs text-ghost-white/50 truncate">
                 {PHASE_LABELS[game.phase]} · {game.currentLocation} · 第{game.roundNumber}輪
               </p>
             </div>
@@ -249,7 +249,7 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
           {messages.length <= 1 && (
             <div className="text-center py-8 animate-fade-in">
               <div className="ancient-divider mx-auto max-w-[160px] mb-4">❖</div>
-              <p className="text-ghost-white/30 text-xs tracking-widest">
+              <p className="text-ghost-white/50 text-xs tracking-widest">
                 {game.phase === "death" ? "命運的序幕正在揭開⋯⋯" : "故事繼續⋯⋯"}
               </p>
             </div>
@@ -262,7 +262,7 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
           {loading && (
             <div className="flex items-center justify-center gap-3 py-4 animate-fade-in">
               <span className="text-lg animate-ghost-float">🕯️</span>
-              <span className="text-ghost-white/30 text-sm tracking-wider">
+              <span className="text-ghost-white/50 text-sm tracking-wider">
                 命運的筆正在書寫⋯⋯
               </span>
             </div>
@@ -333,10 +333,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         isUser ? "msg-user" : "msg-assistant"
       }`}>
         {isUser && (
-          <div className="text-[10px] text-ghost-white/30 mb-1.5 tracking-wider">— 你 —</div>
+          <div className="text-[10px] text-ghost-white/50 mb-1.5 tracking-wider">— 你 —</div>
         )}
         <div className={`text-[15px] leading-relaxed whitespace-pre-wrap ${
-          isUser ? "text-ghost-white/95" : "text-ghost-white/90"
+          isUser ? "text-ghost-white/95" : "text-ghost-white"
         }`}>
           {message.content}
         </div>

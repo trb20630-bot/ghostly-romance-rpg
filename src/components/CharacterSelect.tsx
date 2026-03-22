@@ -12,7 +12,7 @@ const CHARACTERS = [
     gradient: "from-ghost-white/10 to-ghost-white/5",
     borderHover: "hover:border-ghost-white/40",
     accent: "text-ghost-white",
-    accentDim: "text-ghost-white/50",
+    accentDim: "text-ghost-white/70",
     glow: "hover:shadow-[0_0_30px_rgba(180,210,255,0.1)]",
   },
   {
@@ -75,7 +75,7 @@ export default function CharacterSelect({ playerId }: { playerId?: string }) {
             選 擇 命 運
           </h1>
           <div className="ancient-divider mx-auto max-w-[200px]">❖</div>
-          <p className="text-ghost-white/50 text-sm mt-3">
+          <p className="text-ghost-white/70 text-sm mt-3">
             {state.game.player?.age}歲的{state.game.player?.occupation}，
             {state.game.player?.gender === "female" ? "她" : "他"}的靈魂即將墜入輪迴⋯⋯
           </p>
@@ -101,10 +101,10 @@ export default function CharacterSelect({ playerId }: { playerId?: string }) {
               <h2 className={`text-xl font-bold ${ch.accent} mb-1 tracking-widest`}>
                 {ch.name}
               </h2>
-              <p className="text-[11px] text-gold/60 mb-4 tracking-wider">
+              <p className="text-[11px] text-gold/80 mb-4 tracking-wider">
                 ── {ch.subtitle} ──
               </p>
-              <p className="text-sm text-ghost-white/50 leading-relaxed">
+              <p className="text-sm text-ghost-white/70 leading-relaxed">
                 {ch.desc}
               </p>
 

@@ -39,7 +39,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
             輪 迴 之 門
           </h1>
           <div className="ancient-divider mx-auto max-w-[200px]">❖</div>
-          <p className="text-ghost-white/50 text-sm mt-3 tracking-wide">
+          <p className="text-ghost-white/70 text-sm mt-3 tracking-wide">
             在踏入輪迴之前⋯⋯請告訴我，你是誰？
           </p>
         </div>
@@ -49,7 +49,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
 
           {/* Age */}
           <div>
-            <label className="block text-xs text-gold/70 mb-3 tracking-widest uppercase">
+            <label className="block text-xs text-gold/90 mb-3 tracking-widest uppercase">
               生 前 年 歲
             </label>
             <div className="flex items-center gap-4">
@@ -69,7 +69,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
 
           {/* Gender */}
           <div>
-            <label className="block text-xs text-gold/70 mb-3 tracking-widest uppercase">
+            <label className="block text-xs text-gold/90 mb-3 tracking-widest uppercase">
               性 別
             </label>
             <div className="flex gap-3">
@@ -81,7 +81,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
                     className={`flex-1 py-2.5 rounded-lg text-sm tracking-wider transition-all ${
                       gender === val
                         ? "btn-ancient animate-pulse-glow"
-                        : "border border-ghost-white/10 text-ghost-white/40 hover:border-gold/30 hover:text-gold/60"
+                        : "border border-ghost-white/10 text-ghost-white/60 hover:border-gold/30 hover:text-gold/60"
                     }`}
                   >
                     {label}
@@ -93,7 +93,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
 
           {/* Occupation */}
           <div>
-            <label className="block text-xs text-gold/70 mb-3 tracking-widest uppercase">
+            <label className="block text-xs text-gold/90 mb-3 tracking-widest uppercase">
               前 世 職 業
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -104,7 +104,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
                   className={`py-2.5 px-3 rounded-lg text-sm transition-all ${
                     occupation === occ
                       ? "btn-ancient"
-                      : "border border-ghost-white/10 text-ghost-white/40 hover:border-gold/30 hover:text-gold/60"
+                      : "border border-ghost-white/10 text-ghost-white/60 hover:border-gold/30 hover:text-gold/60"
                   }`}
                 >
                   {occ}
@@ -115,7 +115,7 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
                 className={`py-2.5 px-3 rounded-lg text-sm transition-all col-span-2 ${
                   occupation === "__custom"
                     ? "btn-ancient"
-                    : "border border-ghost-white/10 text-ghost-white/40 hover:border-lantern/30 hover:text-lantern/60"
+                    : "border border-ghost-white/10 text-ghost-white/60 hover:border-lantern/30 hover:text-lantern/60"
                 }`}
               >
                 ✦ 自訂職業

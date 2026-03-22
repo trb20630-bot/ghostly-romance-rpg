@@ -4,11 +4,11 @@
   --color-ink: #1a1a2e;
   --color-parchment: #f5f0e8;
   --color-parchment-dark: #e8dcc8;
-  --color-ghost-white: #e8e8f0;
-  --color-blood-red: #8b0000;
-  --color-jade: #2d6a4f;
-  --color-gold: #b8860b;
-  --color-gold-light: #d4a017;
+  --color-ghost-white: #f0f0f8;
+  --color-blood-red: #a01010;
+  --color-jade: #3d8a6f;
+  --color-gold: #d4a017;
+  --color-gold-light: #e8b830;
   --color-night: #0d1117;
   --color-night-light: #161b22;
   --color-lantern: #ff6b35;
@@ -217,10 +217,10 @@ html, body {
 /* ===== Input ===== */
 .input-ancient {
   background: rgba(13, 17, 23, 0.85);
-  border: 1px solid rgba(184, 134, 11, 0.3);
+  border: 1px solid rgba(212, 160, 23, 0.35);
   backdrop-filter: blur(12px);
   transition: all 0.3s ease;
-  color: #e8e8f0;
+  color: #f0f0f8;
   font-size: 15px;
 }
 .input-ancient:focus {
@@ -229,7 +229,7 @@ html, body {
   outline: none;
 }
 .input-ancient::placeholder {
-  color: rgba(232, 232, 240, 0.35);
+  color: rgba(240, 240, 248, 0.45);
 }
 
 /* ===== Mobile Safe Area ===== */

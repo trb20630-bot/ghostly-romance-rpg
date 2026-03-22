@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 interface Props {
   onLogin: (result: {
-    player: { id: string; display_name: string };
+    player: { id: string; name: string };
     session: Record<string, unknown> | null;
     memory: Record<string, unknown> | null;
     conversations: Array<{ round_number: number; role: string; content: string; phase: string }>;
@@ -55,7 +55,7 @@ export default function AuthScreen({ onLogin }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessage({ text: `歡迎回來，${data.player.display_name}！`, error: false });
+      setMessage({ text: `歡迎回來，${data.player.name}！`, error: false });
       setTimeout(() => onLogin(data), 600);
     } catch (err) {
       setMessage({ text: err instanceof Error ? err.message : "登入失敗", error: true });
@@ -111,7 +111,7 @@ export default function AuthScreen({ onLogin }: Props) {
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-2">
             倩 女 幽 魂
           </h1>
-          <p className="text-ghost-white/40 text-xs tracking-wider">
+          <p className="text-ghost-white/60 text-xs tracking-wider">
             那些關於我轉生成為聶小倩／寧采臣的那件事
           </p>
         </div>
@@ -125,7 +125,7 @@ export default function AuthScreen({ onLogin }: Props) {
               className={`flex-1 pb-3 text-sm tracking-widest transition-all ${
                 tab === "login"
                   ? "text-gold border-b-2 border-gold"
-                  : "text-ghost-white/30 hover:text-ghost-white/50"
+                  : "text-ghost-white/50 hover:text-ghost-white/50"
               }`}
             >
               登 入
@@ -135,7 +135,7 @@ export default function AuthScreen({ onLogin }: Props) {
               className={`flex-1 pb-3 text-sm tracking-widest transition-all ${
                 tab === "register"
                   ? "text-gold border-b-2 border-gold"
-                  : "text-ghost-white/30 hover:text-ghost-white/50"
+                  : "text-ghost-white/50 hover:text-ghost-white/50"
               }`}
             >
               註 冊
@@ -157,7 +157,7 @@ export default function AuthScreen({ onLogin }: Props) {
           {tab === "login" && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-gold/70 mb-2 tracking-widest">
+                <label className="block text-xs text-gold/90 mb-2 tracking-widest">
                   名 號
                 </label>
                 <select
@@ -172,7 +172,7 @@ export default function AuthScreen({ onLogin }: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gold/70 mb-2 tracking-widest">
+                <label className="block text-xs text-gold/90 mb-2 tracking-widest">
                   密 碼
                 </label>
                 <input
@@ -199,7 +199,7 @@ export default function AuthScreen({ onLogin }: Props) {
           {tab === "register" && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-gold/70 mb-2 tracking-widest">
+                <label className="block text-xs text-gold/90 mb-2 tracking-widest">
                   名 號
                 </label>
                 <input
@@ -212,7 +212,7 @@ export default function AuthScreen({ onLogin }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gold/70 mb-2 tracking-widest">
+                <label className="block text-xs text-gold/90 mb-2 tracking-widest">
                   密 碼
                 </label>
                 <input
@@ -224,7 +224,7 @@ export default function AuthScreen({ onLogin }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gold/70 mb-2 tracking-widest">
+                <label className="block text-xs text-gold/90 mb-2 tracking-widest">
                   確 認 密 碼
                 </label>
                 <input

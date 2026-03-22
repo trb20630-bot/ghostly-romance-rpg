@@ -11,7 +11,7 @@ import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
 
 interface PlayerInfo {
   id: string;
-  display_name: string;
+  name: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
