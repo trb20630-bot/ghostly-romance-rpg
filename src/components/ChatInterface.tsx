@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useGame } from "./GameProvider";
 import { getRecentHistory } from "@/lib/game-store";
+import { extractSceneTag, cleanSceneTag, isAbnormalTransition, logMusicSwitch, detectSceneFromContent, SCENE_BGM } from "@/lib/scene-bgm";
 import type { ChatMessage } from "@/types/game";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -12,12 +13,32 @@ const PHASE_LABELS: Record<string, string> = {
   ending: "結局",
 };
 
-export default function ChatInterface({ playerId }: { playerId?: string }) {
+
+export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: string; onBackToSlots?: () => void }) {
   const { state, dispatch } = useGame();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const autoStartedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const switchCountRef = useRef<{ round: number; count: number }>({ round: 0, count: 0 });
+
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTitle, setShareTitle] = useState("");
+  const [shareAnonymous, setShareAnonymous] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareResult, setShareResult] = useState<"success" | "error" | null>(null);
+
+  // Music feedback state
+  const [showMusicFeedback, setShowMusicFeedback] = useState(false);
+  const [musicFeedbackText, setMusicFeedbackText] = useState("");
+  const [musicFeedbackSending, setMusicFeedbackSending] = useState(false);
+  const [musicFeedbackResult, setMusicFeedbackResult] = useState<"success" | "error" | null>(null);
+
+  // Read-all TTS state
+  const [readingAll, setReadingAll] = useState(false);
+  const readAllAudioRef = useRef<HTMLAudioElement | null>(null);
+  const readAllAbortRef = useRef(false);
 
   const { game, messages, memory } = state;
 
@@ -28,6 +49,23 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
       behavior: "smooth",
     });
   }, [messages]);
+
+  // 心跳：每 30 秒更新 session 活動時間
+  useEffect(() => {
+    if (!game.sessionId) return;
+    const sendHeartbeat = () => {
+      fetch("/api/save", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: game.sessionId }),
+      }).catch(() => {
+        // 網路斷線時靜默失敗，不影響遊玩
+      });
+    };
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 30000);
+    return () => clearInterval(interval);
+  }, [game.sessionId]);
 
   // Send message
   const sendMessage = useCallback(
@@ -44,7 +82,7 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
       dispatch({ type: "ADD_MESSAGE", payload: userMsg });
 
       try {
-        const recentHistory = getRecentHistory([...messages, userMsg], 15);
+        const recentHistory = getRecentHistory([...messages, userMsg], 10);
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -53,6 +91,7 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
             gameState: game,
             memory,
             recentHistory,
+            playerId,
           }),
         });
 
@@ -62,22 +101,64 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
         }
 
         const data = await res.json();
+        const rawResponse: string = data.message;
+
+        // 空回覆保護
+        if (!rawResponse || !rawResponse.trim()) {
+          throw new Error("AI 回覆為空，請重新嘗試");
+        }
+
+        // 提取場景標記 → 切換 BGM
+        // 優先用 AI 的 <!-- SCENE: XXX --> 標記，沒有時從內容推斷
+        let sceneTag = extractSceneTag(rawResponse);
+        if (!sceneTag) {
+          sceneTag = detectSceneFromContent("", cleanSceneTag(rawResponse));
+        }
+        const prevScene = game.sceneTag;
+        const currentRound = game.roundNumber + 1;
+
+        if (sceneTag && sceneTag !== prevScene) {
+          // 追蹤同一輪切換次數
+          if (switchCountRef.current.round === currentRound) {
+            switchCountRef.current.count++;
+          } else {
+            switchCountRef.current = { round: currentRound, count: 1 };
+          }
+
+          const tooFrequent = switchCountRef.current.count > 2;
+          const abnormal = isAbnormalTransition(prevScene, sceneTag) || tooFrequent;
+
+          dispatch({ type: "SET_SCENE_TAG", payload: sceneTag });
+
+          // 記錄音樂切換（fire-and-forget）
+          void logMusicSwitch({
+            sessionId: game.sessionId,
+            fromScene: prevScene,
+            toScene: sceneTag,
+            aiSnippet: cleanSceneTag(rawResponse).slice(0, 100),
+            isAbnormal: abnormal,
+          });
+        }
+
+        // 顯示用：移除場景標記
         const assistantMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: data.message,
+          content: cleanSceneTag(rawResponse),
           timestamp: Date.now(),
           model: data.model,
         };
         dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
         dispatch({ type: "INCREMENT_ROUND" });
 
-        // Auto-save to Supabase
+        // 儲存用：保留原始回覆（含場景標記）
         if (game.sessionId) {
-          autoSave(text, data.message, data.model, game.roundNumber + 1);
+          autoSave(text, rawResponse, data.model, game.roundNumber + 1);
         }
 
-        if ((game.roundNumber + 1) % 10 === 0 && game.roundNumber > 0) {
+        // 超過 10 輪未摘要就觸發摘要
+        const unsummarizedRounds = (game.roundNumber + 1) - memory.lastSummarizedRound;
+        if (unsummarizedRounds > 10) {
           triggerSummarize();
         }
       } catch (err) {
@@ -134,22 +215,42 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
 
   async function triggerSummarize() {
     try {
-      const convs = messages
-        .filter((m) => m.role !== "system")
-        .map((m, i) => ({
-          round_number: Math.floor(i / 2),
-          role: m.role,
-          content: m.content,
+      // 過濾掉 system 訊息，並根據 user/assistant 配對來計算 round
+      const filtered = messages.filter((m) => m.role !== "system");
+      const convs: Array<{ round_number: number; role: string; content: string; phase: string }> = [];
+      let roundCounter = 1;
+      for (let i = 0; i < filtered.length; i++) {
+        const msg = filtered[i];
+        convs.push({
+          round_number: roundCounter,
+          role: msg.role,
+          content: msg.content,
           phase: game.phase,
-        }));
+        });
+        // 每遇到一條 assistant 訊息就完成一輪
+        if (msg.role === "assistant") {
+          roundCounter++;
+        }
+      }
+
+      // 只取尚未摘要過的輪次對話
+      const startRound = memory.lastSummarizedRound + 1;
+      const endRound = game.roundNumber;
+      const unsummarized = convs.filter(
+        (c) => c.round_number >= startRound && c.round_number <= endRound
+      );
+
+      if (unsummarized.length === 0) return;
 
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversations: convs.slice(memory.lastSummarizedRound * 2, game.roundNumber * 2),
-          startRound: memory.lastSummarizedRound + 1,
-          endRound: game.roundNumber,
+          conversations: unsummarized,
+          startRound,
+          endRound,
+          sessionId: game.sessionId,
+          playerId,
         }),
       });
 
@@ -195,20 +296,6 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
     }
   }
 
-  function handlePhaseTransition(nextPhase: "reincarnation" | "story" | "ending" | "export") {
-    dispatch({ type: "SET_PHASE", payload: nextPhase });
-    const locationMap: Record<string, string> = {
-      reincarnation: "輪迴",
-      story: "金華城",
-      ending: "蘭若寺",
-    };
-    if (locationMap[nextPhase]) {
-      dispatch({ type: "SET_LOCATION", payload: locationMap[nextPhase] });
-    }
-  }
-
-  const phaseButton = getPhaseButton(game.phase, game.roundNumber);
-
   return (
     <div className="h-[100dvh] flex flex-col items-center">
       {/* Header Bar */}
@@ -228,14 +315,93 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
             </div>
           </div>
 
-          {phaseButton && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Read All button */}
+            {messages.filter((m) => m.role === "assistant").length > 0 && (
+              <button
+                onClick={async () => {
+                  if (readingAll) {
+                    readAllAbortRef.current = true;
+                    readAllAudioRef.current?.pause();
+                    readAllAudioRef.current = null;
+                    setReadingAll(false);
+                    dispatch({ type: "SET_TTS_PLAYING", payload: false });
+                    return;
+                  }
+                  readAllAbortRef.current = false;
+                  setReadingAll(true);
+                  dispatch({ type: "SET_TTS_PLAYING", payload: true });
+                  const aiMsgs = messages.filter((m) => m.role === "assistant");
+                  for (const msg of aiMsgs) {
+                    if (readAllAbortRef.current) break;
+                    try {
+                      const res = await fetch("/api/tts", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: msg.content, mode: "smart" }),
+                      });
+                      if (!res.ok || readAllAbortRef.current) break;
+                      const blob = await res.blob();
+                      if (readAllAbortRef.current) break;
+                      const url = URL.createObjectURL(blob);
+                      const audio = new Audio(url);
+                      readAllAudioRef.current = audio;
+                      await new Promise<void>((resolve) => {
+                        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+                        audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+                        audio.play().catch(() => resolve());
+                      });
+                    } catch { break; }
+                  }
+                  setReadingAll(false);
+                  dispatch({ type: "SET_TTS_PLAYING", payload: false });
+                  readAllAudioRef.current = null;
+                }}
+                className={`rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap transition-all ${
+                  readingAll ? "btn-ancient text-gold border-gold/50" : "text-ghost-white/30 hover:text-gold/60 border border-transparent hover:border-gold/20"
+                }`}
+                title={readingAll ? "停止朗讀" : "朗讀全部"}
+              >
+                {readingAll ? "⏹ 停止" : "🔊 朗讀"}
+              </button>
+            )}
+            {game.roundNumber >= 1 && (
+              <>
+                <button
+                  onClick={() => dispatch({ type: "SET_PHASE", payload: "export" })}
+                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                >
+                  匯出故事
+                </button>
+                <button
+                  onClick={() => {
+                    const charName = game.player?.characterName || game.player?.character || "";
+                    setShareTitle(`那些關於我轉生成為${charName}的那件事`);
+                    setShareResult(null);
+                    setShowShareModal(true);
+                  }}
+                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                >
+                  分享作品
+                </button>
+              </>
+            )}
             <button
-              onClick={() => handlePhaseTransition(phaseButton.phase)}
-              className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider shrink-0 whitespace-nowrap"
+              onClick={() => { setMusicFeedbackResult(null); setMusicFeedbackText(""); setShowMusicFeedback(true); }}
+              className="text-ghost-white/20 hover:text-gold/60 transition-colors text-sm"
+              title="音樂不對？點我回報"
             >
-              {phaseButton.label}
+              🎵
             </button>
-          )}
+            {onBackToSlots && (
+              <button
+                onClick={onBackToSlots}
+                className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+              >
+                返回角色列表
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -296,25 +462,231 @@ export default function ChatInterface({ playerId }: { playerId?: string }) {
           </div>
         </form>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night/80 backdrop-blur-sm">
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-6 sm:p-8 w-full max-w-sm animate-fade-in-up space-y-5">
+            <h2 className="text-xl text-gold font-bold tracking-widest text-center">分享作品</h2>
+            <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+
+            {shareResult === "success" ? (
+              <div className="text-center space-y-4">
+                <p className="text-jade text-sm">作品已成功分享到作品牆！</p>
+                <div className="flex justify-center gap-3">
+                  <a href="/gallery" className="btn-jade rounded-lg px-4 py-2 text-xs tracking-wider">查看作品牆</a>
+                  <button onClick={() => setShowShareModal(false)} className="btn-ancient rounded-lg px-4 py-2 text-xs tracking-wider">關閉</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Title */}
+                <div>
+                  <label className="block text-xs text-gold/90 mb-2 tracking-widest">故事標題</label>
+                  <input
+                    type="text"
+                    value={shareTitle}
+                    onChange={(e) => setShareTitle(e.target.value)}
+                    className="w-full input-ancient rounded-lg px-4 py-2.5 text-sm text-ghost-white"
+                    maxLength={50}
+                  />
+                </div>
+
+                {/* Anonymous */}
+                <label className="flex items-center gap-2 text-xs text-ghost-white/60 cursor-pointer">
+                  <input type="checkbox" checked={shareAnonymous} onChange={(e) => setShareAnonymous(e.target.checked)} className="accent-gold" />
+                  匿名分享（不顯示帳號名稱）
+                </label>
+
+                <p className="text-[10px] text-ghost-white/30 leading-relaxed">
+                  分享後，你的故事將公開在作品牆上，其他玩家可以閱讀、按讚和留言。你可以隨時在匯出頁面取消公開。
+                </p>
+
+                {shareResult === "error" && (
+                  <p className="text-blood-red text-xs">分享失敗，請先匯出故事後再分享</p>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      setShareLoading(true);
+                      setShareResult(null);
+                      try {
+                        // Quick share: save raw conversations directly (no AI processing)
+                        const conversations = messages
+                          .filter((m) => m.role !== "system")
+                          .map((m) => ({ role: m.role, content: m.content, phase: game.phase }));
+
+                        const res = await fetch("/api/share", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "quick_share",
+                            sessionId: game.sessionId,
+                            playerId,
+                            title: shareTitle,
+                            conversations,
+                            character: game.player?.character,
+                            isAnonymous: shareAnonymous,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "分享失敗");
+
+                        setShareResult("success");
+                      } catch {
+                        setShareResult("error");
+                      } finally {
+                        setShareLoading(false);
+                      }
+                    }}
+                    disabled={shareLoading || !shareTitle.trim()}
+                    className="flex-1 btn-jade rounded-lg py-2.5 text-sm tracking-wider font-bold disabled:opacity-30"
+                  >
+                    {shareLoading ? "分享中⋯" : "確認分享"}
+                  </button>
+                  <button
+                    onClick={() => setShowShareModal(false)}
+                    className="btn-ancient rounded-lg px-4 py-2.5 text-sm tracking-wider"
+                  >
+                    取消
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Music Feedback Modal */}
+      {showMusicFeedback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night/80 backdrop-blur-sm">
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-6 sm:p-8 w-full max-w-sm animate-fade-in-up space-y-4">
+            <h2 className="text-lg text-gold font-bold tracking-widest text-center">音樂回報</h2>
+            <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+
+            {musicFeedbackResult === "success" ? (
+              <div className="text-center space-y-3">
+                <p className="text-jade text-sm">感謝回報！我們會盡快處理。</p>
+                <button onClick={() => setShowMusicFeedback(false)} className="btn-ancient rounded-lg px-4 py-2 text-xs tracking-wider">關閉</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-ghost-white/50 leading-relaxed">
+                  當前場景：{game.sceneTag || "未知"} · 音樂：{game.sceneTag ? (SCENE_BGM[game.sceneTag]?.split("/").pop()?.replace(".mp3", "") || "未知") : "未知"}
+                </p>
+                <textarea
+                  value={musicFeedbackText}
+                  onChange={(e) => setMusicFeedbackText(e.target.value.slice(0, 500))}
+                  placeholder="音樂跟劇情不搭？請描述你遇到的問題⋯"
+                  rows={3}
+                  className="w-full input-ancient rounded-lg px-4 py-2.5 text-sm text-ghost-white resize-none"
+                  autoFocus
+                />
+                {musicFeedbackResult === "error" && (
+                  <p className="text-blood-red text-xs">送出失敗，請稍後再試</p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      if (!musicFeedbackText.trim()) return;
+                      setMusicFeedbackSending(true);
+                      setMusicFeedbackResult(null);
+                      try {
+                        const recent = messages
+                          .filter((m) => m.role !== "system")
+                          .slice(-6)
+                          .map((m) => `${m.role === "user" ? "玩家" : "AI"}：${m.content.slice(0, 150)}`)
+                          .join("\n");
+                        const res = await fetch("/api/music-feedback", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            sessionId: game.sessionId,
+                            playerId,
+                            currentScene: game.sceneTag,
+                            currentMusic: game.sceneTag ? SCENE_BGM[game.sceneTag] : null,
+                            recentDialogue: recent,
+                            feedback: musicFeedbackText.trim(),
+                          }),
+                        });
+                        if (!res.ok) throw new Error();
+                        setMusicFeedbackResult("success");
+                      } catch {
+                        setMusicFeedbackResult("error");
+                      } finally {
+                        setMusicFeedbackSending(false);
+                      }
+                    }}
+                    disabled={musicFeedbackSending || !musicFeedbackText.trim()}
+                    className="flex-1 btn-jade rounded-lg py-2.5 text-sm tracking-wider font-bold disabled:opacity-30"
+                  >
+                    {musicFeedbackSending ? "送出中⋯" : "送出回報"}
+                  </button>
+                  <button
+                    onClick={() => setShowMusicFeedback(false)}
+                    className="btn-ancient rounded-lg px-4 py-2.5 text-sm tracking-wider"
+                  >
+                    取消
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ===== Phase Button Logic ===== */
-function getPhaseButton(phase: string, round: number) {
-  if (phase === "death" && round >= 6)
-    return { phase: "reincarnation" as const, label: "⟐ 進入輪迴" };
-  if (phase === "reincarnation" && round >= 2)
-    return { phase: "story" as const, label: "⟐ 開始故事" };
-  if (phase === "story" && round >= 20)
-    return { phase: "ending" as const, label: "⟐ 走向結局" };
-  if (phase === "ending")
-    return { phase: "export" as const, label: "⟐ 匯出故事" };
-  return null;
-}
-
-/* ===== Message Bubble ===== */
+/* ===== Message Bubble with TTS ===== */
 function MessageBubble({ message }: { message: ChatMessage }) {
+  const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing" | "paused">("idle");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  function handleTts() {
+    if (ttsState === "playing") {
+      audioRef.current?.pause();
+      setTtsState("paused");
+      return;
+    }
+    if (ttsState === "paused" && audioRef.current) {
+      audioRef.current.play();
+      setTtsState("playing");
+      return;
+    }
+
+    setTtsState("loading");
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message.content, mode: "smart" }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          setTtsState("idle");
+          URL.revokeObjectURL(url);
+          audioRef.current = null;
+        };
+        audio.play();
+        setTtsState("playing");
+      })
+      .catch(() => setTtsState("idle"));
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { audioRef.current?.pause(); };
+  }, []);
+
   if (message.role === "system") {
     return (
       <div className="text-center py-3 animate-fade-in">
@@ -329,7 +701,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-ink-spread`}>
-      <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 sm:px-5 py-3.5 sm:py-4 ${
+      <div className={`relative max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 sm:px-5 py-3.5 sm:py-4 ${
         isUser ? "msg-user" : "msg-assistant"
       }`}>
         {isUser && (
@@ -340,9 +712,25 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         }`}>
           {message.content}
         </div>
-        {!isUser && message.model && (
-          <div className="text-[9px] text-gold/25 mt-3 text-right tracking-wider uppercase">
-            {message.model}
+        {/* TTS button for AI messages */}
+        {!isUser && (
+          <div className="flex items-center justify-between mt-3">
+            <button
+              onClick={handleTts}
+              className={`text-[11px] px-2 py-1 rounded-md transition-all ${
+                ttsState === "playing"
+                  ? "text-gold border border-gold/40 bg-gold/5"
+                  : ttsState === "loading"
+                    ? "text-ghost-white/20"
+                    : "text-ghost-white/25 hover:text-gold/60 hover:bg-gold/5 border border-transparent hover:border-gold/20"
+              }`}
+              title={ttsState === "playing" ? "暫停" : ttsState === "paused" ? "繼續" : "朗讀"}
+            >
+              {ttsState === "loading" ? "⋯" : ttsState === "playing" ? "⏸" : ttsState === "paused" ? "▶" : "🔊"}
+            </button>
+            {message.model && (
+              <span className="text-[9px] text-gold/25 tracking-wider uppercase">{message.model}</span>
+            )}
           </div>
         )}
       </div>
