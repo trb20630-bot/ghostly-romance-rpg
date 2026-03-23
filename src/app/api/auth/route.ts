@@ -85,13 +85,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "密碼錯誤" }, { status: 401 });
       }
 
-      // 更新最後活動時間
-      void supabase
-        .from("players")
-        .update({ last_active: new Date().toISOString() })
-        .eq("id", player.id)
-        .then();
-
       // 取得該玩家所有角色存檔
       const { data: sessions } = await supabase
         .from("game_sessions")
@@ -112,13 +105,6 @@ export async function POST(request: NextRequest) {
       if (!playerId || !sessionId) {
         return NextResponse.json({ error: "缺少參數" }, { status: 400 });
       }
-
-      // 更新最後活動時間
-      void supabase
-        .from("players")
-        .update({ last_active: new Date().toISOString() })
-        .eq("id", playerId)
-        .then();
 
       const { data: session } = await supabase
         .from("game_sessions")
@@ -185,15 +171,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== 心跳（更新在線狀態） =====
+    // 活動時間由 game_sessions.updated_at 追蹤（透過 /api/save PATCH）
     if (action === "heartbeat") {
-      const { playerId } = body;
-      if (playerId) {
-        void supabase
-          .from("players")
-          .update({ last_active: new Date().toISOString() })
-          .eq("id", playerId)
-          .then();
-      }
       return NextResponse.json({ ok: true });
     }
 

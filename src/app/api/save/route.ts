@@ -66,15 +66,17 @@ export async function POST(request: NextRequest) {
     });
 
     // 3. 更新遊戲進度 + 活動時間
+    // updated_at 由 DB trigger 自動更新；也嘗試寫 last_active_at（若欄位存在）
+    const updatePayload: Record<string, unknown> = {
+      round_number: roundNumber,
+      phase,
+      current_location: currentLocation,
+      is_daytime: isDaytime,
+    };
+    // 嘗試加入 last_active_at（若 migration 007 已套用則生效，否則被 DB 忽略）
     await supabase
       .from("game_sessions")
-      .update({
-        round_number: roundNumber,
-        phase,
-        current_location: currentLocation,
-        is_daytime: isDaytime,
-        last_active_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", sessionId);
 
     return NextResponse.json({ ok: true });
@@ -97,10 +99,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
     }
 
+    // 心跳：觸發 updated_at trigger 更新活動時間
+    // 用一個無害的 update 來觸發 DB 的 updated_at trigger
     const supabase = getSupabase();
     await supabase
       .from("game_sessions")
-      .update({ last_active_at: new Date().toISOString() })
+      .update({ updated_at: new Date().toISOString() })
       .eq("id", sessionId);
 
     return NextResponse.json({ ok: true });

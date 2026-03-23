@@ -20,16 +20,28 @@ export async function GET(request: NextRequest) {
   );
 
   try {
-    // Query players — try with last_active, fallback without it
-    let playersRes = await supabase.from("players").select("*").order("created_at", { ascending: false });
+    // Query players — use select(*) to handle varying schemas
+    const playersRes = await supabase
+      .from("players")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     if (playersRes.error) {
-      playersRes = await supabase.from("players").select("id, name, created_at").order("created_at", { ascending: false });
+      console.error("Players query error:", playersRes.error);
+      return NextResponse.json({ error: "查詢玩家失敗: " + playersRes.error.message }, { status: 500 });
     }
 
+    // Query sessions — use select(*) to avoid column-not-found errors
+    // (last_active_at may not exist if migration 007 hasn't been applied)
     const sessionsRes = await supabase
       .from("game_sessions")
-      .select("id, player_id, slot_number, chosen_character, player_occupation, phase, round_number, current_location, updated_at, last_active_at")
+      .select("*")
       .order("slot_number", { ascending: true });
+
+    if (sessionsRes.error) {
+      console.error("Sessions query error:", sessionsRes.error);
+      return NextResponse.json({ error: "查詢角色失敗: " + sessionsRes.error.message }, { status: 500 });
+    }
 
     const players = playersRes.data || [];
     const sessions = sessionsRes.data || [];
@@ -37,26 +49,50 @@ export async function GET(request: NextRequest) {
     // Group sessions by player
     const sessionsByPlayer: Record<string, typeof sessions> = {};
     for (const s of sessions) {
-      if (!sessionsByPlayer[s.player_id]) sessionsByPlayer[s.player_id] = [];
-      sessionsByPlayer[s.player_id].push(s);
+      const pid = s.player_id as string;
+      if (!pid) continue;
+      if (!sessionsByPlayer[pid]) sessionsByPlayer[pid] = [];
+      sessionsByPlayer[pid].push(s);
     }
 
-    // 用 session 的 last_active_at 判斷在線（比 players.last_active 更準確）
+    // Build player list with last_active from sessions
     const playerList = players.map((p: Record<string, unknown>) => {
-      const pSessions = sessionsByPlayer[p.id as string] || [];
-      // 優先用 session 的 last_active_at，其次 updated_at，最後 players.last_active
+      const pId = p.id as string;
+      const pSessions = sessionsByPlayer[pId] || [];
+
+      // Determine last activity: check session timestamps
+      // Try last_active_at (migration 007), fallback to updated_at, fallback to player's last_active
       const sessionTimes = pSessions
-        .map((s: Record<string, unknown>) => (s.last_active_at as string) || (s.updated_at as string))
-        .filter(Boolean);
+        .map((s: Record<string, unknown>) =>
+          (s.last_active_at as string) || (s.updated_at as string) || null
+        )
+        .filter(Boolean) as string[];
+
       const latestSessionTime = sessionTimes.length > 0
-        ? sessionTimes.reduce((a: string, b: string) => a > b ? a : b)
+        ? sessionTimes.reduce((a, b) => a > b ? a : b)
         : null;
+
+      // Fallback chain: session time > player's last_active > null
+      const lastActive = latestSessionTime || (p.last_active as string) || null;
+
       return {
-        player_id: p.id,
-        player_name: p.name || "未命名",
-        last_active: latestSessionTime || (p.last_active as string) || null,
-        created_at: p.created_at,
-        sessions: pSessions,
+        player_id: pId,
+        player_name: (p.name as string) || "未命名",
+        last_active: lastActive,
+        created_at: p.created_at as string,
+        sessions: pSessions.map((s: Record<string, unknown>) => ({
+          id: s.id,
+          player_id: s.player_id,
+          slot_number: s.slot_number,
+          chosen_character: s.chosen_character || null,
+          character_name: s.character_name || null,
+          player_occupation: s.player_occupation || null,
+          phase: s.phase || "setup",
+          round_number: (s.round_number as number) || 0,
+          current_location: s.current_location || "未知",
+          updated_at: s.updated_at || s.created_at || null,
+          last_active_at: s.last_active_at || null,
+        })),
       };
     });
 
@@ -65,9 +101,9 @@ export async function GET(request: NextRequest) {
     const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
     const onlineCount = playerList.filter((p) => p.last_active && p.last_active > fiveMinAgo).length;
     const completedCount = sessions.filter((s) => s.phase === "ending" || s.phase === "export").length;
-    const activeSessions = sessions.filter((s) => s.round_number > 0);
+    const activeSessions = sessions.filter((s) => (s.round_number as number) > 0);
     const avgRound = activeSessions.length > 0
-      ? activeSessions.reduce((sum, s) => sum + s.round_number, 0) / activeSessions.length
+      ? activeSessions.reduce((sum, s) => sum + (s.round_number as number), 0) / activeSessions.length
       : 0;
 
     return NextResponse.json({

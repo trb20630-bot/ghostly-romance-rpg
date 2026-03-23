@@ -6,11 +6,13 @@ interface SessionInfo {
   id: string;
   slot_number: number;
   chosen_character: string | null;
+  character_name: string | null;
   player_occupation: string | null;
   phase: string;
   round_number: number;
   current_location: string;
   updated_at: string;
+  last_active_at: string | null;
 }
 
 interface PlayerInfo {
@@ -193,8 +195,8 @@ export default function AdminPlayers() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gold/80">{s.chosen_character}</span>
-                          <span className="text-[10px] text-ghost-white/30">({s.player_occupation})</span>
+                          <span className="text-xs text-gold/80">{s.character_name || s.chosen_character}</span>
+                          <span className="text-[10px] text-ghost-white/30">({s.player_occupation ? s.player_occupation.slice(0, 20) : "—"})</span>
                           <span className="text-[10px] text-ghost-white/40 border border-ghost-white/10 rounded px-1 py-0.5">
                             {PHASE_LABELS[s.phase] || s.phase}
                           </span>
