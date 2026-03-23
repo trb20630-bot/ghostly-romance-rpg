@@ -189,31 +189,7 @@ export default function AdminPlayers() {
               {sessionList.length > 0 ? (
                 <div className="grid gap-2">
                   {sessionList.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 bg-ghost-white/3 rounded-lg px-3 py-2">
-                      <span className="text-sm">
-                        {s.chosen_character === "聶小倩" ? "幽" : "書"}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gold/80">{s.character_name || s.chosen_character}</span>
-                          <span className="text-[10px] text-ghost-white/30">({s.player_occupation ? s.player_occupation.slice(0, 20) : "—"})</span>
-                          <span className="text-[10px] text-ghost-white/40 border border-ghost-white/10 rounded px-1 py-0.5">
-                            {PHASE_LABELS[s.phase] || s.phase}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 h-1 bg-ghost-white/5 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gold/40 rounded-full"
-                              style={{ width: `${getProgressPercent(s.round_number)}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-ghost-white/30 tabular-nums">
-                            {s.round_number}輪 ({getProgressPercent(s.round_number)}%)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                    <SessionCard key={s.id} session={s} formatTime={formatTime} getProgressPercent={getProgressPercent} />
                   ))}
                 </div>
               ) : (
@@ -227,6 +203,63 @@ export default function AdminPlayers() {
           <div className="text-center py-12 text-ghost-white/30">尚無玩家資料</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SessionCard({ session: s, formatTime, getProgressPercent }: {
+  session: SessionInfo;
+  formatTime: (d: string | null) => string;
+  getProgressPercent: (r: number) => number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const occupation = s.player_occupation || "—";
+  const shortOccupation = occupation.length > 15 ? occupation.slice(0, 15) + "…" : occupation;
+  const hasLongOccupation = occupation.length > 15;
+
+  return (
+    <div className="bg-ghost-white/3 rounded-lg px-3 py-2">
+      {/* Summary row — always visible */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm shrink-0">
+          {s.chosen_character === "聶小倩" ? "幽" : "書"}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gold/80 font-bold">{s.character_name || s.chosen_character}</span>
+            <span className="text-[10px] text-ghost-white/30">{shortOccupation}</span>
+            <span className="text-[10px] text-ghost-white/40 border border-ghost-white/10 rounded px-1 py-0.5">
+              {PHASE_LABELS[s.phase] || s.phase}
+            </span>
+            <span className="text-[10px] text-ghost-white/30 tabular-nums">
+              {s.round_number}輪 {getProgressPercent(s.round_number)}%
+            </span>
+            <span className="text-[10px] text-ghost-white/20">
+              {formatTime(s.last_active_at || s.updated_at)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex-1 h-1 bg-ghost-white/5 rounded-full overflow-hidden">
+              <div className="h-full bg-gold/40 rounded-full" style={{ width: `${getProgressPercent(s.round_number)}%` }} />
+            </div>
+          </div>
+        </div>
+        {hasLongOccupation && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[10px] text-ghost-white/30 hover:text-gold/60 transition-colors shrink-0 px-1"
+          >
+            {expanded ? "收起" : "展開"}
+          </button>
+        )}
+      </div>
+
+      {/* Expanded detail — only when clicked */}
+      {expanded && hasLongOccupation && (
+        <div className="mt-2 ml-8 text-[11px] text-ghost-white/40 leading-relaxed border-l border-ghost-white/10 pl-3">
+          {occupation.length > 100 ? occupation.slice(0, 100) + "……" : occupation}
+        </div>
+      )}
     </div>
   );
 }
