@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callClaude } from "@/lib/claude";
+import { logTokenUsage } from "@/lib/token-logger";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const CHAPTER_PROMPT = `你是一個小說編輯。你的任務是將以下遊戲對話紀錄改寫成一篇流暢的小說章節。
+const CHAPTER_PROMPT = `你是一個小說編輯。將以下遊戲對話改寫成流暢的小說章節。
 
-規則：
-1. 移除所有選項提示和遊戲機制相關文字
-2. 將第二人稱（「你」）轉為第一人稱（「我」）或第三人稱（根據角色）
-3. 保留所有重要對話，但改為小說對話格式
-4. 加入必要的心理描寫和場景過渡
-5. 保持古典文風
-6. 每章 800-1500 字
+轉換規則：
+1. 移除所有選項（A/B/C/D）和遊戲機制文字
+2. 將玩家選擇融入敘事（「我選A」→「他決定...」或「她毅然...」）
+3. 人稱一致：寧采臣用「他」，聶小倩用「她」
+4. 加入場景轉換和環境描寫
+5. 潤飾對話使其像小說
+6. 保持古典文風
+7. **必須完整改寫所有對話內容，不可省略任何情節或對話**
+8. **不要截斷，確保每段情節都有完整的結尾**
 
-請直接輸出小說文本，不要加任何說明。`;
+直接輸出小說文本，不要加說明。`;
 
 interface ExportRequestBody {
   conversations: Array<{
@@ -28,26 +32,27 @@ interface ExportRequestBody {
     occupation: string;
     character: string;
   };
+  sessionId?: string;
+  playerId?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: ExportRequestBody = await request.json();
-    const { conversations, playerProfile } = body;
+    const { conversations, playerProfile, sessionId, playerId } = body;
 
     if (!conversations || conversations.length === 0) {
       return NextResponse.json({ error: "無對話紀錄" }, { status: 400 });
     }
 
-    // 按階段分組對話
+    const pronoun = playerProfile.character === "聶小倩" ? "她" : "他";
     const phases = groupByPhase(conversations);
 
-    // 為每個階段生成章節
     const chapters = [];
     const chapterNames: Record<string, string> = {
       death: "序章：現代的終結",
       reincarnation: "楔子：輪迴",
-      story: "", // 根據內容動態命名
+      story: "",
       ending: "終章",
     };
 
@@ -56,82 +61,76 @@ export async function POST(request: NextRequest) {
     for (const [phase, convs] of Object.entries(phases)) {
       if (convs.length === 0) continue;
 
-      const convText = convs
-        .map(
-          (c: { role: string; content: string }) =>
-            `${c.role === "user" ? "【玩家】" : "【AI】"}${c.content}`
-        )
-        .join("\n\n");
+      // Smart chunking: split into chunks of ~8 messages to avoid token overflow
+      // but ensure each chunk is small enough for thorough conversion
+      const chunkSize = 8;
+      const needsChunking = convs.length > chunkSize;
+      const chunks = needsChunking
+        ? splitIntoChunks(convs, chunkSize)
+        : [convs];
 
-      // 故事階段可能需要拆分為多個章節
-      if (phase === "story" && convs.length > 30) {
-        const chunkSize = 15;
-        for (let i = 0; i < convs.length; i += chunkSize) {
-          const chunk = convs.slice(i, i + chunkSize);
-          const chunkText = chunk
-            .map(
-              (c: { role: string; content: string }) =>
-                `${c.role === "user" ? "【玩家】" : "【AI】"}${c.content}`
-            )
-            .join("\n\n");
-
-          chapterNum++;
-          const result = await callClaude(
-            CHAPTER_PROMPT,
-            [
-              {
-                role: "user",
-                content: `角色：${playerProfile.character}\n轉生前身份：${playerProfile.age}歲${playerProfile.occupation}\n\n以下是對話紀錄，請改寫為小說第${chapterNum}章：\n\n${chunkText}`,
-              },
-            ],
-            "sonnet",
-            2000
-          );
-
-          chapters.push({
-            number: chapterNum,
-            title: `第${chapterNum}章`,
-            content: result.text,
-          });
-        }
-      } else {
+      for (const chunk of chunks) {
         chapterNum++;
+        const chapterTitle = needsChunking
+          ? `第${chapterNum}章`
+          : (chapterNames[phase] || `第${chapterNum}章`);
+
         const result = await callClaude(
           CHAPTER_PROMPT,
-          [
-            {
-              role: "user",
-              content: `角色：${playerProfile.character}\n轉生前身份：${playerProfile.age}歲${playerProfile.occupation}\n\n以下是「${phase}」階段的對話紀錄，請改寫為小說章節「${chapterNames[phase] || `第${chapterNum}章`}」：\n\n${convText}`,
-            },
-          ],
-          "sonnet",
-          2000
+          [{
+            role: "user",
+            content: `角色：${playerProfile.character}（用「${pronoun}」稱呼）\n轉生前身份：${playerProfile.age}歲${playerProfile.occupation}\n\n請將以下對話完整改寫為小說章節「${chapterTitle}」，不可遺漏任何情節：\n\n${formatConvs(chunk)}`,
+          }],
+          "haiku",
+          4096
         );
+
+        void logTokenUsage({
+          sessionId: sessionId || null,
+          playerId: playerId || null,
+          roundNumber: chapterNum,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          model: "haiku",
+          endpoint: "chat",
+        });
 
         chapters.push({
           number: chapterNum,
-          title: chapterNames[phase] || `第${chapterNum}章`,
+          title: chapterTitle,
           content: result.text,
         });
       }
     }
 
-    // 組裝完整小說
-    const characterName =
-      playerProfile.character === "聶小倩" ? "聶小倩" : "寧采臣";
+    const characterName = playerProfile.character === "聶小倩" ? "聶小倩" : "寧采臣";
     const title = `那些關於我轉生成為${characterName}的那件事`;
+    const totalWords = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
 
-    const totalWords = chapters.reduce(
-      (sum, ch) => sum + ch.content.length,
-      0
-    );
+    const story: Record<string, unknown> = { title, chapters, totalWords, exportedAt: new Date().toISOString() };
 
-    const story = {
-      title,
-      chapters,
-      totalWords,
-      exportedAt: new Date().toISOString(),
-    };
+    // Save to story_exports table
+    if (sessionId) {
+      try {
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        const { data: inserted } = await supabase.from("story_exports").insert({
+          session_id: sessionId,
+          title,
+          chapters,
+          total_words: totalWords,
+          format: "markdown",
+        }).select("id").single();
+
+        if (inserted) {
+          story.storyExportId = inserted.id;
+        }
+      } catch (e) {
+        console.warn("Failed to save story export:", e);
+      }
+    }
 
     return NextResponse.json(story);
   } catch (error) {
@@ -141,6 +140,24 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function splitIntoChunks<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function formatConvs(convs: Array<{ role: string; content: string }>): string {
+  return convs
+    .map((c) => `${c.role === "user" ? "【玩家】" : "【AI】"}${cleanSceneTag(c.content)}`)
+    .join("\n\n");
+}
+
+function cleanSceneTag(text: string): string {
+  return text.replace(/\s*<!-- SCENE: \w+ -->\s*/g, "").trim();
 }
 
 function groupByPhase(

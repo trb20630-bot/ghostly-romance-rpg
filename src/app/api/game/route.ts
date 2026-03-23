@@ -16,7 +16,7 @@ function getSupabaseAdmin() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { playerId, slotNumber, playerAge, playerGender, playerOccupation, chosenCharacter } = body;
+    const { playerId, slotNumber, characterName, playerAge, playerGender, playerOccupation, chosenCharacter } = body;
 
     const supabase = getSupabaseAdmin();
 
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         {
           player_id: playerId,
           slot_number: slotNumber || 1,
+          character_name: characterName || null,
           player_age: playerAge,
           player_gender: playerGender,
           player_occupation: playerOccupation,

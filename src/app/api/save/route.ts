@@ -33,6 +33,19 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabase();
 
+    // 防重複：檢查此 round 是否已存在
+    const { data: existing } = await supabase
+      .from("conversation_logs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("round_number", roundNumber)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      // 此輪已儲存過，跳過避免重複
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+
     // 1. 儲存玩家訊息
     await supabase.from("conversation_logs").insert({
       session_id: sessionId,
@@ -52,7 +65,7 @@ export async function POST(request: NextRequest) {
       phase,
     });
 
-    // 3. 更新遊戲進度
+    // 3. 更新遊戲進度 + 活動時間
     await supabase
       .from("game_sessions")
       .update({
@@ -60,6 +73,7 @@ export async function POST(request: NextRequest) {
         phase,
         current_location: currentLocation,
         is_daytime: isDaytime,
+        last_active_at: new Date().toISOString(),
       })
       .eq("id", sessionId);
 
@@ -70,5 +84,27 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "儲存失敗" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * PATCH /api/save — 心跳：更新 session 活動時間
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { sessionId } = await request.json();
+    if (!sessionId) {
+      return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
+    }
+
+    const supabase = getSupabase();
+    await supabase
+      .from("game_sessions")
+      .update({ last_active_at: new Date().toISOString() })
+      .eq("id", sessionId);
+
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

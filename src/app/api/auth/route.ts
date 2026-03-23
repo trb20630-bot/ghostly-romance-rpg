@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { validateAndRepairContext } from "@/lib/context-guard";
 
 export const runtime = "nodejs";
 
@@ -11,8 +12,7 @@ function getSupabase() {
 }
 
 /**
- * POST /api/auth — 登入或註冊
- * body: { action: "login" | "register" | "list", name?, password? }
+ * POST /api/auth — 登入、註冊、取得角色列表、刪除角色、載入角色
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "名稱和密碼不能為空" }, { status: 400 });
       }
 
-      // 檢查名稱是否已存在
       const { data: existing } = await supabase
         .from("players")
         .select("id")
@@ -55,13 +54,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "此名號已被使用" }, { status: 409 });
       }
 
-      // 建立玩家
       const { data: player, error } = await supabase
         .from("players")
-        .insert({
-          name: name.trim(),
-          password: password,
-        })
+        .insert({ name: name.trim(), password })
         .select("id, name")
         .single();
 
@@ -70,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ player });
     }
 
-    // ===== 登入 =====
+    // ===== 登入（回傳玩家 + 所有角色列表） =====
     if (action === "login") {
       const { name, password } = body;
 
@@ -86,49 +81,120 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (error) throw error;
-
       if (!player) {
         return NextResponse.json({ error: "密碼錯誤" }, { status: 401 });
       }
 
-      // 取得該玩家的遊戲存檔
+      // 更新最後活動時間
+      void supabase
+        .from("players")
+        .update({ last_active: new Date().toISOString() })
+        .eq("id", player.id)
+        .then();
+
+      // 取得該玩家所有角色存檔
       const { data: sessions } = await supabase
         .from("game_sessions")
         .select("*")
         .eq("player_id", player.id)
-        .order("updated_at", { ascending: false });
-
-      // 取得存檔的記憶
-      let memory = null;
-      let conversations: Array<{ round_number: number; role: string; content: string; phase: string }> = [];
-      if (sessions && sessions.length > 0) {
-        const session = sessions[0];
-
-        const { data: mem } = await supabase
-          .from("player_memory")
-          .select("*")
-          .eq("session_id", session.id)
-          .maybeSingle();
-
-        if (mem) memory = mem;
-
-        // 取得對話紀錄
-        const { data: logs } = await supabase
-          .from("conversation_logs")
-          .select("round_number, role, content, phase")
-          .eq("session_id", session.id)
-          .order("round_number", { ascending: true })
-          .order("created_at", { ascending: true });
-
-        if (logs) conversations = logs;
-      }
+        .order("slot_number", { ascending: true });
 
       return NextResponse.json({
         player,
-        session: sessions?.[0] || null,
-        memory,
-        conversations,
+        sessions: sessions || [],
       });
+    }
+
+    // ===== 載入特定角色存檔（含完整性檢查 + 自動修復）=====
+    if (action === "load_session") {
+      const { playerId, sessionId } = body;
+
+      if (!playerId || !sessionId) {
+        return NextResponse.json({ error: "缺少參數" }, { status: 400 });
+      }
+
+      // 更新最後活動時間
+      void supabase
+        .from("players")
+        .update({ last_active: new Date().toISOString() })
+        .eq("id", playerId)
+        .then();
+
+      const { data: session } = await supabase
+        .from("game_sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .eq("player_id", playerId)
+        .single();
+
+      if (!session) {
+        return NextResponse.json({ error: "找不到存檔" }, { status: 404 });
+      }
+
+      // 完整性檢查 + 自動修復（去重、檢查配對、修復記憶）
+      const validation = await validateAndRepairContext(sessionId, playerId);
+
+      if (validation.issues.length > 0) {
+        console.warn(`[load_session] ${sessionId} 發現問題:`, validation.issues);
+      }
+
+      return NextResponse.json({
+        session,
+        memory: validation.memory ? {
+          key_facts: validation.memory.key_facts,
+          story_summaries: validation.memory.story_summaries,
+          last_summarized_round: validation.memory.last_summarized_round,
+        } : null,
+        conversations: validation.conversations,
+        contextIssues: validation.issues.length > 0 ? validation.issues : undefined,
+        needsSummary: validation.memory
+          ? (session.round_number - validation.memory.last_summarized_round > 15)
+          : false,
+      });
+    }
+
+    // ===== 刪除角色存檔 =====
+    if (action === "delete_session") {
+      const { playerId, sessionId } = body;
+
+      if (!playerId || !sessionId) {
+        return NextResponse.json({ error: "缺少參數" }, { status: 400 });
+      }
+
+      // 確認是該玩家的存檔
+      const { data: session } = await supabase
+        .from("game_sessions")
+        .select("id")
+        .eq("id", sessionId)
+        .eq("player_id", playerId)
+        .maybeSingle();
+
+      if (!session) {
+        return NextResponse.json({ error: "找不到存檔" }, { status: 404 });
+      }
+
+      // CASCADE 會自動刪除 conversation_logs, player_memory
+      const { error } = await supabase
+        .from("game_sessions")
+        .delete()
+        .eq("id", sessionId);
+
+      if (error) throw error;
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ===== 心跳（更新在線狀態） =====
+    if (action === "heartbeat") {
+      const { playerId } = body;
+      if (playerId) {
+        void supabase
+          .from("players")
+          .update({ last_active: new Date().toISOString() })
+          .eq("id", playerId)
+          .then();
+      }
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ error: "無效的操作" }, { status: 400 });

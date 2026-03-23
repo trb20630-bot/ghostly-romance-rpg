@@ -29,7 +29,7 @@ const CHARACTERS = [
   },
 ];
 
-export default function CharacterSelect({ playerId }: { playerId?: string }) {
+export default function CharacterSelect({ playerId, slotNumber }: { playerId?: string; slotNumber?: number }) {
   const { state, dispatch } = useGame();
 
   async function handleSelect(character: "聶小倩" | "寧采臣") {
@@ -47,7 +47,8 @@ export default function CharacterSelect({ playerId }: { playerId?: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             playerId,
-            slotNumber: 1,
+            slotNumber: slotNumber || 1,
+            characterName: state.game.player.characterName,
             playerAge: state.game.player.age,
             playerGender: state.game.player.gender,
             playerOccupation: state.game.player.occupation,

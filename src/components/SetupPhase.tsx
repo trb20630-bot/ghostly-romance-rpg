@@ -9,8 +9,9 @@ const OCCUPATIONS = [
   "廚師", "警察",
 ];
 
-export default function SetupPhase({ playerId }: { playerId?: string }) {
+export default function SetupPhase({ playerId, slotNumber, onBack }: { playerId?: string; slotNumber?: number; onBack?: () => void }) {
   const { dispatch } = useGame();
+  const [characterName, setCharacterName] = useState("");
   const [age, setAge] = useState(25);
   const [gender, setGender] = useState<"male" | "female" | "other">("male");
   const [occupation, setOccupation] = useState("");
@@ -19,10 +20,10 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
   const finalOccupation = occupation === "__custom" ? customOccupation : occupation;
 
   function handleNext() {
-    if (!finalOccupation.trim()) return;
+    if (!characterName.trim() || !finalOccupation.trim()) return;
     dispatch({
       type: "SET_PLAYER",
-      payload: { id: playerId, age, gender, occupation: finalOccupation, character: "寧采臣" },
+      payload: { id: playerId, characterName: characterName.trim(), age, gender, occupation: finalOccupation, character: "寧采臣" },
     });
     dispatch({ type: "SET_PHASE", payload: "character" });
   }
@@ -47,6 +48,23 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
         {/* Form Panel */}
         <div className="glass-panel ancient-frame corner-decor rounded-2xl p-5 sm:p-7 space-y-5">
 
+          {/* Character Name */}
+          <div>
+            <label className="block text-xs text-gold/90 mb-3 tracking-widest uppercase">
+              你 的 名 字
+            </label>
+            <input
+              type="text"
+              value={characterName}
+              onChange={(e) => setCharacterName(e.target.value)}
+              placeholder="為你的角色取一個名字⋯"
+              maxLength={20}
+              className="w-full input-ancient rounded-lg px-4 py-2.5 text-[15px] text-ghost-white"
+              autoFocus
+            />
+            <p className="text-[10px] text-ghost-white/30 mt-1">這個名字將用於遊戲中和匯出的故事</p>
+          </div>
+
           {/* Age */}
           <div>
             <label className="block text-xs text-gold/90 mb-3 tracking-widest uppercase">
@@ -59,7 +77,8 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
                 max={70}
                 value={age}
                 onChange={(e) => setAge(Number(e.target.value))}
-                className="flex-1 accent-gold h-1 cursor-pointer"
+                onInput={(e) => setAge(Number((e.target as HTMLInputElement).value))}
+                className="flex-1 h-6"
               />
               <span className="text-gold font-bold text-xl w-10 text-right tabular-nums">
                 {age}
@@ -122,28 +141,41 @@ export default function SetupPhase({ playerId }: { playerId?: string }) {
               </button>
             </div>
             {occupation === "__custom" && (
-              <input
-                type="text"
-                value={customOccupation}
-                onChange={(e) => setCustomOccupation(e.target.value)}
-                placeholder="輸入你的職業⋯"
-                className="mt-3 w-full input-ancient rounded-lg px-4 py-2.5 text-sm text-ghost-white"
-                autoFocus
-              />
+              <div className="mt-3">
+                <textarea
+                  value={customOccupation}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 5000) setCustomOccupation(e.target.value);
+                  }}
+                  placeholder={"任意描述你的前世身份，越詳細越好！\n\n例如：精通命理與風水的退役特種部隊指揮官⋯⋯"}
+                  className="w-full input-ancient rounded-lg px-4 py-3 text-sm text-ghost-white resize-y leading-relaxed"
+                  style={{ minHeight: "200px" }}
+                />
+                <p className="text-[10px] text-ghost-white/30 text-right mt-1.5 tabular-nums">
+                  {customOccupation.length} / 5000 字
+                </p>
+              </div>
             )}
           </div>
 
-          {/* Divider */}
           <div className="ancient-divider">✦</div>
 
-          {/* Submit */}
           <button
             onClick={handleNext}
-            disabled={!finalOccupation.trim()}
+            disabled={!characterName.trim() || !finalOccupation.trim()}
             className="w-full py-3.5 rounded-xl text-lg tracking-widest transition-all disabled:opacity-20 disabled:cursor-not-allowed btn-jade font-bold"
           >
             確 認 身 份
           </button>
+
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="w-full text-center text-xs text-ghost-white/30 hover:text-ghost-white/60 transition-colors tracking-wider mt-3"
+            >
+              ← 返回角色列表
+            </button>
+          )}
         </div>
       </div>
     </div>

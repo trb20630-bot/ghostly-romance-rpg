@@ -1,6 +1,7 @@
 // ===== 玩家設定 =====
 export interface PlayerProfile {
   id?: string;
+  characterName: string;
   age: number;
   gender: "male" | "female" | "other";
   occupation: string;
@@ -25,6 +26,8 @@ export interface GameState {
   roundNumber: number;
   currentLocation: string;
   isDaytime: boolean;
+  sceneTag: string | null;
+  ttsPlaying: boolean;
 }
 
 // ===== 對話系統 =====

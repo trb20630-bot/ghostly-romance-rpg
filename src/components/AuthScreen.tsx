@@ -3,12 +3,8 @@
 import { useState, useEffect } from "react";
 
 interface Props {
-  onLogin: (result: {
-    player: { id: string; name: string };
-    session: Record<string, unknown> | null;
-    memory: Record<string, unknown> | null;
-    conversations: Array<{ round_number: number; role: string; content: string; phase: string }>;
-  }) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onLogin: (result: any) => void;
 }
 
 export default function AuthScreen({ onLogin }: Props) {
@@ -246,6 +242,21 @@ export default function AuthScreen({ onLogin }: Props) {
               </button>
             </div>
           )}
+        </div>
+
+        {/* Gallery button */}
+        <div className="mt-5">
+          <a
+            href="/gallery"
+            className="block w-full btn-ancient rounded-xl py-3 text-base tracking-widest font-bold text-center"
+          >
+            作 品 牆
+          </a>
+        </div>
+
+        {/* Admin link */}
+        <div className="text-center mt-3">
+          <a href="/admin/tokens" className="text-[11px] text-ghost-white/20 hover:text-ghost-white/40 transition-colors">管理後台</a>
         </div>
       </div>
     </div>

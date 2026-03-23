@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { GameProvider, useGame } from "@/components/GameProvider";
 import AuthScreen from "@/components/AuthScreen";
+import SlotSelect from "@/components/SlotSelect";
 import SetupPhase from "@/components/SetupPhase";
 import CharacterSelect from "@/components/CharacterSelect";
 import ChatInterface from "@/components/ChatInterface";
 import ExportView from "@/components/ExportView";
+import BgmPlayer from "@/components/BgmPlayer";
 import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
 
 interface PlayerInfo {
@@ -14,45 +16,198 @@ interface PlayerInfo {
   name: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SessionInfo = any;
+interface SessionInfo {
+  id: string;
+  slot_number: number;
+  character_name: string | null;
+  chosen_character: string | null;
+  player_occupation: string | null;
+  player_age: number | null;
+  player_gender: string | null;
+  phase: string;
+  round_number: number;
+  current_location: string;
+  is_daytime: boolean;
+  updated_at: string;
+}
+
+type Screen = "auth" | "slots" | "game";
 
 export default function HomePage() {
+  const [screen, setScreen] = useState<Screen>("auth");
+  const [entered, setEntered] = useState(false);
   const [player, setPlayer] = useState<PlayerInfo | null>(null);
-  const [savedSession, setSavedSession] = useState<SessionInfo | null>(null);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [activeSession, setActiveSession] = useState<SessionInfo | null>(null);
   const [savedMemory, setSavedMemory] = useState<PlayerMemory | null>(null);
   const [savedConversations, setSavedConversations] = useState<
     Array<{ round_number: number; role: string; content: string; phase: string }>
   >([]);
+  const [newSlotNumber, setNewSlotNumber] = useState<number>(1);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function handleLogin(result: any) {
-    setPlayer(result.player);
-    setSavedSession(result.session as SessionInfo | null);
-    if (result.memory) {
-      setSavedMemory({
-        keyFacts: (result.memory.key_facts as PlayerMemory["keyFacts"]) || {
-          enemies: [], allies: [], promises: [], secrets: [],
-          kills: [], learned_skills: [], visited_places: [], important_items: [],
-        },
-        storySummaries: (result.memory.story_summaries as string[]) || [],
-        lastSummarizedRound: (result.memory.last_summarized_round as number) || 0,
+  // Heartbeat: update online status every 2 minutes
+  useEffect(() => {
+    if (!player) return;
+    const interval = setInterval(() => {
+      void fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "heartbeat", playerId: player.id }),
       });
-    }
-    setSavedConversations(result.conversations || []);
+    }, 120000);
+    return () => clearInterval(interval);
+  }, [player]);
+
+  // Login handler — now goes to slot select
+  function handleLogin(result: { player: { id: string; name: string }; sessions: SessionInfo[] }) {
+    setPlayer(result.player);
+    setSessions(result.sessions);
+    setScreen("slots");
+    // Save for gallery comments
+    sessionStorage.setItem("playerId", result.player.id);
+    sessionStorage.setItem("playerName", result.player.name);
   }
 
-  if (!player) {
-    return <AuthScreen onLogin={handleLogin} />;
+  const [syncing, setSyncing] = useState(false);
+
+  // Load a specific session and enter game
+  async function handleSelectSession(sessionId: string) {
+    if (!player) return;
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "load_session",
+          playerId: player.id,
+          sessionId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // 如果後端檢測到問題，顯示同步提示
+      if (data.contextIssues && data.contextIssues.length > 0) {
+        console.warn("Context issues detected:", data.contextIssues);
+      }
+
+      setActiveSession(data.session);
+      if (data.memory) {
+        setSavedMemory({
+          keyFacts: (data.memory.key_facts as PlayerMemory["keyFacts"]) || {
+            enemies: [], allies: [], promises: [], secrets: [],
+            kills: [], learned_skills: [], visited_places: [], important_items: [],
+          },
+          storySummaries: (data.memory.story_summaries as string[]) || [],
+          lastSummarizedRound: (data.memory.last_summarized_round as number) || 0,
+        });
+      } else {
+        setSavedMemory(null);
+      }
+      setSavedConversations(data.conversations || []);
+      setScreen("game");
+    } catch (err) {
+      console.error("Load session error:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  // Start a new game (go to setup)
+  function handleNewGame(slotNumber: number) {
+    setNewSlotNumber(slotNumber);
+    setActiveSession(null);
+    setSavedMemory(null);
+    setSavedConversations([]);
+    setScreen("game");
+  }
+
+  function handleLogout() {
+    setPlayer(null);
+    setSessions([]);
+    setActiveSession(null);
+    setScreen("auth");
+  }
+
+  function handleBackToSlots() {
+    setActiveSession(null);
+    setSavedMemory(null);
+    setSavedConversations([]);
+    // Re-fetch sessions
+    if (player) {
+      void fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login", name: player.name, password: "__session_refresh__" }),
+      }).catch(() => {});
+    }
+    setScreen("slots");
+    // Reload the page to refresh session list
+    window.location.reload();
+  }
+
+  // Splash screen — user clicks to enter, which unlocks audio
+  if (!entered) {
+    return (
+      <div
+        className="h-[100dvh] flex items-center justify-center cursor-pointer"
+        onClick={() => setEntered(true)}
+      >
+        <div className="text-center animate-fade-in-up">
+          <div className="text-6xl sm:text-7xl mb-6 animate-ghost-float">🏮</div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gold tracking-[0.3em] mb-4">
+            倩 女 幽 魂
+          </h1>
+          <p className="text-ghost-white/40 text-sm tracking-wider mb-10">
+            那些關於我轉生成為聶小倩／寧采臣的那件事
+          </p>
+          <div className="ancient-divider mx-auto max-w-[200px] mb-8">❖</div>
+          <p className="text-gold/50 text-xs tracking-widest animate-pulse">
+            — 點 擊 進 入 —
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "auth" || !player) {
+    return (<><BgmPlayer phase="login" /><AuthScreen onLogin={handleLogin} /></>);
+  }
+
+  if (screen === "slots") {
+    return (
+      <>
+        <BgmPlayer phase="login" />
+        {syncing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-night/80 backdrop-blur-sm">
+            <div className="text-center animate-fade-in">
+              <div className="text-4xl animate-ghost-float mb-4">🕯️</div>
+              <p className="text-gold text-sm tracking-widest">正在同步遊戲資料...</p>
+            </div>
+          </div>
+        )}
+        <SlotSelect
+          playerId={player.id}
+          playerName={player.name}
+          sessions={sessions}
+          onSelectSession={handleSelectSession}
+          onNewGame={handleNewGame}
+          onLogout={handleLogout}
+        />
+      </>
+    );
   }
 
   return (
     <GameProvider>
-      <GameRouter
+      <GameRouterWithBgm
         player={player}
-        savedSession={savedSession}
+        savedSession={activeSession}
         savedMemory={savedMemory}
         savedConversations={savedConversations}
+        slotNumber={newSlotNumber}
+        onBackToSlots={handleBackToSlots}
       />
     </GameProvider>
   );
@@ -63,11 +218,15 @@ function GameRouter({
   savedSession,
   savedMemory,
   savedConversations,
+  slotNumber,
+  onBackToSlots,
 }: {
   player: PlayerInfo;
   savedSession: SessionInfo | null;
   savedMemory: PlayerMemory | null;
   savedConversations: Array<{ round_number: number; role: string; content: string; phase: string }>;
+  slotNumber: number;
+  onBackToSlots: () => void;
 }) {
   const { state, dispatch } = useGame();
   const [restored, setRestored] = useState(false);
@@ -77,28 +236,26 @@ function GameRouter({
     setRestored(true);
 
     if (savedSession) {
-      // Restore player profile
       dispatch({
         type: "SET_PLAYER",
         payload: {
           id: player.id,
-          age: savedSession.player_age,
-          gender: savedSession.player_gender as "male" | "female" | "other",
-          occupation: savedSession.player_occupation,
-          character: savedSession.chosen_character as "聶小倩" | "寧采臣",
+          characterName: savedSession.character_name || "",
+          age: savedSession.player_age || 25,
+          gender: (savedSession.player_gender as "male" | "female" | "other") || "male",
+          occupation: savedSession.player_occupation || "",
+          character: (savedSession.chosen_character as "聶小倩" | "寧采臣") || "寧采臣",
         },
       });
       dispatch({ type: "SET_SESSION_ID", payload: savedSession.id });
-      dispatch({ type: "SET_PHASE", payload: savedSession.phase });
+      dispatch({ type: "SET_PHASE", payload: savedSession.phase as GamePhase });
       dispatch({ type: "SET_LOCATION", payload: savedSession.current_location });
       dispatch({ type: "SET_DAYTIME", payload: savedSession.is_daytime });
 
-      // Restore round number
       for (let i = 0; i < savedSession.round_number; i++) {
         dispatch({ type: "INCREMENT_ROUND" });
       }
 
-      // Restore conversations
       if (savedConversations.length > 0) {
         for (const conv of savedConversations) {
           dispatch({
@@ -113,26 +270,108 @@ function GameRouter({
         }
       }
 
-      // Restore memory
       if (savedMemory) {
         dispatch({ type: "UPDATE_MEMORY", payload: savedMemory });
       }
     }
   }
 
+  // Prompt for character name if old save doesn't have one
+  const [namePromptInput, setNamePromptInput] = useState("");
+  const needsName = savedSession && !savedSession.character_name && state.game.player && !state.game.player.characterName && state.game.phase !== "setup" && state.game.phase !== "character";
+
+  if (needsName) {
+    return (
+      <div className="h-[100dvh] flex items-center justify-center p-4">
+        <div className="max-w-sm w-full animate-fade-in-up">
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-7 text-center space-y-5">
+            <div className="text-4xl animate-ghost-float">🏮</div>
+            <h2 className="text-xl text-gold font-bold tracking-widest">為你的角色命名</h2>
+            <p className="text-xs text-ghost-white/60 leading-relaxed">這個名字將用於遊戲中和匯出的故事</p>
+            <input
+              type="text"
+              value={namePromptInput}
+              onChange={(e) => setNamePromptInput(e.target.value)}
+              placeholder="輸入角色名字⋯"
+              maxLength={20}
+              className="w-full input-ancient rounded-lg px-4 py-3 text-[15px] text-ghost-white text-center"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && namePromptInput.trim()) {
+                  dispatch({ type: "SET_PLAYER", payload: { ...state.game.player!, characterName: namePromptInput.trim() } });
+                  // Save to DB
+                  if (state.game.sessionId) {
+                    void fetch("/api/game", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ sessionId: state.game.sessionId, character_name: namePromptInput.trim() }),
+                    });
+                  }
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                if (!namePromptInput.trim()) return;
+                dispatch({ type: "SET_PLAYER", payload: { ...state.game.player!, characterName: namePromptInput.trim() } });
+                if (state.game.sessionId) {
+                  void fetch("/api/game", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sessionId: state.game.sessionId, character_name: namePromptInput.trim() }),
+                  });
+                }
+              }}
+              disabled={!namePromptInput.trim()}
+              className="w-full btn-jade rounded-xl py-3 text-base tracking-widest font-bold disabled:opacity-20"
+            >
+              確 認
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isExport = state.game.phase === "export";
+
+  let content;
   switch (state.game.phase) {
     case "setup":
-      return <SetupPhase playerId={player.id} />;
+      content = <SetupPhase playerId={player.id} slotNumber={slotNumber} onBack={onBackToSlots} />;
+      break;
     case "character":
-      return <CharacterSelect playerId={player.id} />;
+      content = <CharacterSelect playerId={player.id} slotNumber={slotNumber} />;
+      break;
     case "death":
     case "reincarnation":
     case "story":
     case "ending":
-      return <ChatInterface playerId={player.id} />;
+      content = <ChatInterface playerId={player.id} onBackToSlots={onBackToSlots} />;
+      break;
     case "export":
-      return <ExportView />;
+      content = <ExportView playerId={player.id} onBackToSlots={onBackToSlots} />;
+      break;
     default:
-      return <SetupPhase playerId={player.id} />;
+      content = <SetupPhase playerId={player.id} slotNumber={slotNumber} onBack={onBackToSlots} />;
   }
+
+  return (
+    <>
+      <BgmPlayer phase={state.game.phase} location={state.game.currentLocation} sceneTag={state.game.sceneTag} ducking={state.game.ttsPlaying} showSelector={isExport} />
+      {content}
+    </>
+  );
+}
+
+// Wrapper that puts BgmPlayer inside GameProvider context
+function GameRouterWithBgm(props: {
+  player: PlayerInfo;
+  savedSession: SessionInfo | null;
+  savedMemory: PlayerMemory | null;
+  savedConversations: Array<{ round_number: number; role: string; content: string; phase: string }>;
+  slotNumber: number;
+  onBackToSlots: () => void;
+}) {
+  return <GameRouter {...props} />;
 }

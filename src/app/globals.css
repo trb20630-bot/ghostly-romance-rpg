@@ -21,9 +21,9 @@
 
 /* ===== Global ===== */
 html, body {
-  overflow: hidden;
   overscroll-behavior: none;
 }
+
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 4px; }
@@ -230,6 +230,67 @@ html, body {
 }
 .input-ancient::placeholder {
   color: rgba(240, 240, 248, 0.45);
+}
+
+/* ===== Range Slider（跨瀏覽器 + 手機觸控） ===== */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* Track */
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(184, 134, 11, 0.15);
+}
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(184, 134, 11, 0.15);
+  border: none;
+}
+
+/* Thumb — 至少 24px 方便手指按 */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-gold);
+  border: 2px solid rgba(13, 17, 23, 0.8);
+  box-shadow: 0 0 6px rgba(184, 134, 11, 0.4);
+  margin-top: -9px;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-gold);
+  border: 2px solid rgba(13, 17, 23, 0.8);
+  box-shadow: 0 0 6px rgba(184, 134, 11, 0.4);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 10px rgba(184, 134, 11, 0.6);
+}
+input[type="range"]:active::-moz-range-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 10px rgba(184, 134, 11, 0.6);
+}
+
+/* Disabled */
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: rgba(184, 134, 11, 0.3);
+  box-shadow: none;
+}
+input[type="range"]:disabled::-moz-range-thumb {
+  background: rgba(184, 134, 11, 0.3);
+  box-shadow: none;
 }
 
 /* ===== Mobile Safe Area ===== */

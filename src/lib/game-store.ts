@@ -19,6 +19,8 @@ export type GameAction =
   | { type: "SET_SESSION_ID"; payload: string }
   | { type: "SET_LOCATION"; payload: string }
   | { type: "SET_DAYTIME"; payload: boolean }
+  | { type: "SET_SCENE_TAG"; payload: string | null }
+  | { type: "SET_TTS_PLAYING"; payload: boolean }
   | { type: "INCREMENT_ROUND" }
   | { type: "ADD_MESSAGE"; payload: ChatMessage }
   | { type: "UPDATE_MEMORY"; payload: Partial<PlayerMemory> }
@@ -57,6 +59,8 @@ export const initialState: FullGameState = {
     roundNumber: 0,
     currentLocation: "現代",
     isDaytime: true,
+    sceneTag: null,
+    ttsPlaying: false,
   },
   messages: [],
   memory: initialMemory,
@@ -96,6 +100,18 @@ export function gameReducer(
       return {
         ...state,
         game: { ...state.game, isDaytime: action.payload },
+      };
+
+    case "SET_SCENE_TAG":
+      return {
+        ...state,
+        game: { ...state.game, sceneTag: action.payload },
+      };
+
+    case "SET_TTS_PLAYING":
+      return {
+        ...state,
+        game: { ...state.game, ttsPlaying: action.payload },
       };
 
     case "INCREMENT_ROUND":
@@ -155,7 +171,7 @@ export function gameReducer(
  */
 export function getRecentHistory(
   messages: ChatMessage[],
-  rounds: number = 15
+  rounds: number = 10
 ): ChatMessage[] {
   // 每輪 = 一組 user + assistant
   const pairs: ChatMessage[][] = [];
