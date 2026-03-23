@@ -41,9 +41,9 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     return localStorage.getItem("bgm_enabled") !== "false";
   });
   const [volume, setVolumeRaw] = useState(() => {
-    if (typeof window === "undefined") return 0.15;
+    if (typeof window === "undefined") return 0.8;
     const saved = localStorage.getItem("bgm_volume");
-    const val = saved !== null ? Number(saved) : 0.15;
+    const val = saved !== null ? Number(saved) : 0.8;
     console.log("[音量控制] 載入儲存音量:", val);
     return val;
   });
