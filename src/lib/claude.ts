@@ -6,7 +6,7 @@
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 const MODELS = {
-  sonnet: "claude-sonnet-4-20250514",
+  sonnet: "claude-sonnet-4-6",
   haiku: "claude-haiku-4-5-20251001",
 } as const;
 
@@ -60,20 +60,25 @@ export async function callClaude(
   };
 }
 
+export interface ClaudeResult {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /**
  * 用 Haiku 生成摘要
  */
 export async function summarizeWithHaiku(
   systemPrompt: string,
   conversationText: string
-): Promise<string> {
-  const result = await callClaude(
+): Promise<ClaudeResult> {
+  return callClaude(
     systemPrompt,
     [{ role: "user", content: conversationText }],
     "haiku",
     500
   );
-  return result.text;
 }
 
 /**
@@ -82,12 +87,11 @@ export async function summarizeWithHaiku(
 export async function extractFactsWithHaiku(
   systemPrompt: string,
   conversationText: string
-): Promise<string> {
-  const result = await callClaude(
+): Promise<ClaudeResult> {
+  return callClaude(
     systemPrompt,
     [{ role: "user", content: conversationText }],
     "haiku",
     500
   );
-  return result.text;
 }

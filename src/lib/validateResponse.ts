@@ -1,6 +1,8 @@
 /**
  * AI 回應驗證與自動修復
  * 確保每個回應都有玩家引導（選項/提示/行動）
+ *
+ * 強制規則：每個回應結尾必須包含【你的選擇】區塊
  */
 
 // 場景對應的預設行動選項
@@ -22,29 +24,41 @@ const NPC_ACTIONS: Record<string, string> = {
 };
 
 /**
- * 檢查回應是否包含玩家引導
+ * 檢查回應是否包含玩家選項區塊
  */
-export function hasPlayerGuidance(response: string): boolean {
-  // 檢查選項式：A）B）C）或 A. B. C.
-  if (/[A-D][）.]\s*.+/m.test(response)) return true;
+export function hasPlayerChoices(response: string): boolean {
+  // 檢查【你的選擇】或【選項】區塊
+  if (/【.*選擇.*】|【選項】/.test(response)) return true;
 
-  // 檢查【你的選擇】
-  if (/【.*選擇.*】/.test(response)) return true;
-
-  // 檢查情境提示式
-  if (/你可以[：:]/.test(response)) return true;
-
-  // 檢查緊急式
-  if (/你必須立刻/.test(response)) return true;
-
-  // 檢查「或」引導
-  if (/，或(者|做|輸入)/.test(response)) return true;
+  // 檢查 A. B. C. 或 A）B）C）格式（至少要有 A 和 B 兩個選項）
+  if (/A[.、）]\s*.+[\s\S]*B[.、）]\s*.+/m.test(response)) return true;
 
   return false;
 }
 
 /**
- * 根據場景和 NPC 生成預設引導選項
+ * 舊的相容函數名（保持向後相容）
+ */
+export function hasPlayerGuidance(response: string): boolean {
+  return hasPlayerChoices(response);
+}
+
+/**
+ * 確保回應包含玩家選項（強制版）
+ */
+export function ensurePlayerChoices(response: string): string {
+  if (!response || !response.trim()) return response;
+
+  if (hasPlayerChoices(response)) return response;
+
+  // 強制加上選項
+  const defaultChoices = `\n\n---\n\n【你的選擇】\nA. 探索四周環境\nB. 仔細觀察眼前的狀況\nC. 保持警戒，靜待變化\nD. 或輸入你想做的事`;
+
+  return response.trimEnd().replace(/[.。…]+$/, '') + defaultChoices;
+}
+
+/**
+ * 根據場景和 NPC 生成情境相關的引導選項
  */
 export function generateDefaultGuidance(
   location: string,
@@ -59,7 +73,7 @@ export function generateDefaultGuidance(
     actions.push(...locationActions);
   } else {
     // 通用行動
-    actions.push("觀察周圍環境", "搜索附近", "繼續前進");
+    actions.push("探索四周環境", "仔細觀察眼前的狀況", "保持警戒，靜待變化");
   }
 
   // NPC 互動（如果有）
@@ -71,16 +85,17 @@ export function generateDefaultGuidance(
     }
   }
 
-  // 取前 3 個，避免選項太多
+  // 取前 3 個
   const selected = actions.slice(0, 3);
-  const options = selected.map((a, i) => `${String.fromCharCode(65 + i)}）${a}`).join("\n");
+  const letters = ['A', 'B', 'C'];
+  const options = selected.map((a, i) => `${letters[i]}. ${a}`).join("\n");
 
-  return `\n\n【你的選擇】\n${options}\n或輸入你想做的事。`;
+  return `\n\n---\n\n【你的選擇】\n${options}\nD. 或輸入你想做的事`;
 }
 
 /**
- * 驗證 AI 回應並自動修復
- * - 如果沒有引導 → 補上預設選項
+ * 驗證 AI 回應並自動修復（主要入口）
+ * - 如果沒有【你的選擇】區塊 → 根據場景補上
  * - 如果以「...」結尾 → 補上引導
  */
 export function validateAndFixResponse(
@@ -95,12 +110,12 @@ export function validateAndFixResponse(
     return response;
   }
 
-  // 已有引導 → 直接通過
-  if (hasPlayerGuidance(response)) {
+  // 已有選項 → 直接通過
+  if (hasPlayerChoices(response)) {
     return response;
   }
 
-  // 沒有引導 → 自動補上
+  // 沒有選項 → 根據場景自動補上
   const guidance = generateDefaultGuidance(context.location, context.phase, context.npcs);
-  return response.trimEnd() + guidance;
+  return response.trimEnd().replace(/[.。…]+$/, '') + guidance;
 }
