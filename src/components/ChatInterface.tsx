@@ -640,12 +640,77 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   );
 }
 
+/* ===== Split text into chunks for faster TTS ===== */
+function splitForTts(text: string): string[] {
+  const maxLen = 300;
+  const paragraphs = text.split(/\n\n+/);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const para of paragraphs) {
+    if (current.length + para.length + 2 > maxLen && current) {
+      chunks.push(current.trim());
+      current = para;
+    } else {
+      current += (current ? "\n\n" : "") + para;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length > 0 ? chunks : [text];
+}
+
+async function fetchTtsChunk(text: string): Promise<Blob | null> {
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, mode: "smart" }),
+    });
+    if (!res.ok) return null;
+    return res.blob();
+  } catch {
+    return null;
+  }
+}
+
 /* ===== Message Bubble with TTS ===== */
 function MessageBubble({ message }: { message: ChatMessage }) {
   const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing" | "paused">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioQueueRef = useRef<string[]>([]);
+  const queueIdxRef = useRef(0);
 
-  function handleTts() {
+  function cleanupQueue() {
+    audioQueueRef.current.forEach((url) => URL.revokeObjectURL(url));
+    audioQueueRef.current = [];
+    queueIdxRef.current = 0;
+  }
+
+  function playNextInQueue() {
+    const queue = audioQueueRef.current;
+    const idx = queueIdxRef.current;
+    if (idx >= queue.length) {
+      setTtsState("idle");
+      audioRef.current = null;
+      cleanupQueue();
+      return;
+    }
+    const url = queue[idx];
+    queueIdxRef.current = idx + 1;
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      playNextInQueue();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      playNextInQueue();
+    };
+    audio.play().catch(() => playNextInQueue());
+  }
+
+  async function handleTts() {
     if (ttsState === "playing") {
       audioRef.current?.pause();
       setTtsState("paused");
@@ -658,33 +723,50 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     }
 
     setTtsState("loading");
-    fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: message.content, mode: "smart" }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error();
-        return res.blob();
-      })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onended = () => {
-          setTtsState("idle");
-          URL.revokeObjectURL(url);
-          audioRef.current = null;
-        };
-        audio.play();
-        setTtsState("playing");
-      })
-      .catch(() => setTtsState("idle"));
+    cleanupQueue();
+
+    const chunks = splitForTts(message.content);
+
+    try {
+      // Fetch first chunk immediately
+      const firstBlob = await fetchTtsChunk(chunks[0]);
+      if (!firstBlob) { setTtsState("idle"); return; }
+
+      // Start playing first chunk right away
+      const firstUrl = URL.createObjectURL(firstBlob);
+      const firstAudio = new Audio(firstUrl);
+      audioRef.current = firstAudio;
+      setTtsState("playing");
+
+      // Fetch remaining chunks in parallel while first plays
+      const remainingPromise = chunks.length > 1
+        ? Promise.all(chunks.slice(1).map(fetchTtsChunk))
+        : Promise.resolve([]);
+
+      // Set up first audio to chain to queue
+      firstAudio.onended = () => {
+        URL.revokeObjectURL(firstUrl);
+        playNextInQueue();
+      };
+      firstAudio.onerror = () => {
+        URL.revokeObjectURL(firstUrl);
+        playNextInQueue();
+      };
+      firstAudio.play().catch(() => setTtsState("idle"));
+
+      // Build queue from remaining chunks
+      const remaining = await remainingPromise;
+      audioQueueRef.current = remaining
+        .filter((b): b is Blob => b !== null)
+        .map((blob) => URL.createObjectURL(blob));
+    } catch {
+      setTtsState("idle");
+    }
   }
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => { audioRef.current?.pause(); };
+    return () => { audioRef.current?.pause(); cleanupQueue(); };
   }, []);
 
   if (message.role === "system") {

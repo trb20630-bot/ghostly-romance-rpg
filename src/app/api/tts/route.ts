@@ -4,19 +4,30 @@ export const runtime = "nodejs";
 
 // ===== Voice Map =====
 const VOICE_MAP: Record<string, string> = {
-  // Narration
+  // Narration — 溫暖沉穩的說書人
   narrator: "zh-CN-YunyangNeural",
   // Male characters
-  寧采臣: "zh-CN-YunxiNeural",
-  燕赤霞: "zh-CN-YunzeNeural",
+  寧采臣: "zh-CN-YunxiNeural",       // 年輕書生
+  燕赤霞: "zh-CN-YunjianNeural",      // 滄桑有力的道士
   // Female characters
-  聶小倩: "zh-CN-XiaoxiaoNeural",
-  小倩: "zh-CN-XiaoxiaoNeural",
-  姥姥: "zh-CN-XiaochenNeural",
+  聶小倩: "zh-CN-XiaoyiNeural",       // 溫柔女聲（比 Xiaoxiao 更柔和）
+  小倩: "zh-CN-XiaoyiNeural",
+  姥姥: "zh-CN-XiaochenNeural",       // 陰沉女聲
   // Defaults
   male_default: "zh-CN-YunjianNeural",
   female_default: "zh-CN-XiaoyiNeural",
 };
+
+// Per-character prosody settings
+const PROSODY_MAP: Record<string, { rate: string; pitch: string }> = {
+  "zh-CN-YunyangNeural":  { rate: "+10%",  pitch: "+0Hz"  },  // 旁白：稍快
+  "zh-CN-YunxiNeural":    { rate: "+5%",   pitch: "+0Hz"  },  // 寧采臣：略快
+  "zh-CN-YunjianNeural":  { rate: "-5%",   pitch: "-1Hz"  },  // 燕赤霞：沉穩慢速
+  "zh-CN-XiaoyiNeural":   { rate: "+0%",   pitch: "+1Hz"  },  // 聶小倩：柔和
+  "zh-CN-XiaochenNeural": { rate: "-10%",  pitch: "-3Hz"  },  // 姥姥：陰森慢速
+};
+
+const DEFAULT_PROSODY = { rate: "+10%", pitch: "+0Hz" };
 
 // Known character names for detection
 const KNOWN_CHARACTERS = ["寧采臣", "聶小倩", "小倩", "燕赤霞", "姥姥"];
@@ -30,9 +41,9 @@ interface TtsSegment {
 
 /**
  * POST /api/tts
- * body: { text, mode?: "smart"|"single", voice?: string, rate?: number }
- * mode=smart: multi-voice with character detection (default)
- * mode=single: single voice (legacy)
+ * body: { text, mode?: "smart"|"single", voice?: string }
+ * mode=smart: multi-voice with character detection + per-character prosody (default)
+ * mode=single: single voice
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,27 +55,27 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { text, mode = "smart", voice = "narrator", rate = 1 } = body;
+    const { text, mode = "smart", voice = "narrator" } = body;
 
     if (!text?.trim()) {
       return NextResponse.json({ error: "缺少文字內容" }, { status: 400 });
     }
 
-    const trimmedText = cleanForTts(text.slice(0, 10000));
-    const rateStr = rate === 1 ? "default" : `${Math.round(rate * 100)}%`;
-
     let ssml: string;
 
     if (mode === "smart") {
-      // Parse text into segments with different voices
-      const segments = parseSegments(trimmedText);
-      ssml = buildMultiVoiceSsml(segments, rateStr);
+      // Smart mode: preserve 「」 for voice detection, then parse segments
+      const cleaned = cleanForTts(text.slice(0, 10000), true);
+      const segments = parseSegments(cleaned);
+      ssml = buildMultiVoiceSsml(segments);
     } else {
       // Single voice mode
+      const cleaned = cleanForTts(text.slice(0, 10000), false);
       const voiceName = VOICE_MAP[voice] || VOICE_MAP.narrator;
+      const prosody = PROSODY_MAP[voiceName] || DEFAULT_PROSODY;
       ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN">
   <voice name="${voiceName}">
-    <prosody rate="${rateStr}">${escapeXml(trimmedText)}</prosody>
+    <prosody rate="${prosody.rate}" pitch="${prosody.pitch}">${escapeXml(cleaned)}</prosody>
   </voice>
 </speak>`;
     }
@@ -115,7 +126,6 @@ export async function POST(request: NextRequest) {
  */
 function parseSegments(text: string): TtsSegment[] {
   const segments: TtsSegment[] = [];
-  // Regex to match: optional context before quote + quoted dialogue
   const parts = text.split(/(「[^」]*」)/g);
 
   let lastSpeaker = "";
@@ -151,15 +161,11 @@ function parseSegments(text: string): TtsSegment[] {
  */
 function detectSpeaker(fullText: string, quotePart: string, lastSpeaker: string): string {
   const quoteIdx = fullText.indexOf(quotePart);
-  // Check ~40 chars before the quote for character names
   const beforeText = fullText.slice(Math.max(0, quoteIdx - 40), quoteIdx);
 
-  // Look for known character names near the quote
   for (const name of KNOWN_CHARACTERS) {
     if (beforeText.includes(name)) return name;
   }
-
-  // Check for gender hints in surrounding text
   for (const hint of MALE_HINTS) {
     if (beforeText.includes(hint)) return hint;
   }
@@ -167,9 +173,7 @@ function detectSpeaker(fullText: string, quotePart: string, lastSpeaker: string)
     if (beforeText.includes(hint)) return hint;
   }
 
-  // Fall back to last known speaker
   if (lastSpeaker) return lastSpeaker;
-
   return "narrator";
 }
 
@@ -177,21 +181,17 @@ function detectSpeaker(fullText: string, quotePart: string, lastSpeaker: string)
  * Get Azure voice name for a speaker
  */
 function getVoiceForSpeaker(speaker: string): string {
-  // Direct match
   if (VOICE_MAP[speaker]) return VOICE_MAP[speaker];
-
-  // Gender-based fallback
   if (MALE_HINTS.some((h) => speaker.includes(h))) return VOICE_MAP.male_default;
   if (FEMALE_HINTS.some((h) => speaker.includes(h))) return VOICE_MAP.female_default;
-
   return VOICE_MAP.narrator;
 }
 
 /**
- * Build multi-voice SSML
+ * Build multi-voice SSML with per-character prosody
  */
-function buildMultiVoiceSsml(segments: TtsSegment[], rateStr: string): string {
-  // Group consecutive segments with same voice to reduce SSML complexity
+function buildMultiVoiceSsml(segments: TtsSegment[]): string {
+  // Group consecutive segments with same voice
   const grouped: TtsSegment[] = [];
   for (const seg of segments) {
     if (grouped.length > 0 && grouped[grouped.length - 1].voice === seg.voice) {
@@ -202,7 +202,10 @@ function buildMultiVoiceSsml(segments: TtsSegment[], rateStr: string): string {
   }
 
   const voiceSections = grouped
-    .map((seg) => `  <voice name="${seg.voice}"><prosody rate="${rateStr}">${escapeXml(seg.text)}</prosody></voice>`)
+    .map((seg) => {
+      const prosody = PROSODY_MAP[seg.voice] || DEFAULT_PROSODY;
+      return `  <voice name="${seg.voice}"><prosody rate="${prosody.rate}" pitch="${prosody.pitch}">${escapeXml(seg.text)}</prosody></voice>`;
+    })
     .join("\n");
 
   return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN">
@@ -210,21 +213,26 @@ ${voiceSections}
 </speak>`;
 }
 
-/** Clean text for TTS — remove symbols that get read aloud */
-function cleanForTts(text: string): string {
-  return text
-    // Remove **bold** markers
+/**
+ * Clean text for TTS — remove symbols that get read aloud
+ * @param preserveQuotes - true in smart mode to keep 「」 for voice detection
+ */
+function cleanForTts(text: string, preserveQuotes: boolean): string {
+  let cleaned = text
+    // Remove markdown bold/italic
     .replace(/\*\*([^*]+)\*\*/g, "$1")
-    // Remove *italic* markers
     .replace(/\*([^*]+)\*/g, "$1")
-    // Remove option lines: > A) ... / A）...
-    .replace(/^>\s*[A-Da-d][)）].*/gm, "")
-    // Remove "或者，你也可以自由描述..." prompts
+    // Remove option lines: A) ... / A. ... / A）...
+    .replace(/^[A-Da-d][)）.]\s*.*/gm, "")
+    // Remove 【你的選擇】 block header
+    .replace(/^【.*選擇.*】.*$/gm, "")
+    // Remove "或者..." prompts
     .replace(/^>\s*或者.*/gm, "")
-    // Remove bare > at line start
     .replace(/^>\s*/gm, "")
-    // Remove 「」 quote marks (keep content)
-    .replace(/[「」]/g, "")
+    // Remove scene tags
+    .replace(/<!--\s*SCENE:\s*\w+\s*-->/g, "")
+    // Remove --- dividers
+    .replace(/^-{3,}$/gm, "")
     // Remove —— dash pairs → pause
     .replace(/——/g, "，")
     // Remove ...... → pause
@@ -237,6 +245,12 @@ function cleanForTts(text: string): string {
     // Clean multiple blank lines
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  if (!preserveQuotes) {
+    cleaned = cleaned.replace(/[「」]/g, "");
+  }
+
+  return cleaned;
 }
 
 function escapeXml(text: string): string {
