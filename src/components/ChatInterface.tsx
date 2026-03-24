@@ -14,6 +14,13 @@ const PHASE_LABELS: Record<string, string> = {
   ending: "結局",
 };
 
+type FontSizeKey = "small" | "medium" | "large";
+const FONT_SIZES: Record<FontSizeKey, { label: string; message: string }> = {
+  small:  { label: "小", message: "text-sm" },
+  medium: { label: "中", message: "text-base" },
+  large:  { label: "大", message: "text-lg" },
+};
+
 
 export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: string; onBackToSlots?: () => void }) {
   const { state, dispatch } = useGame();
@@ -51,6 +58,19 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const isSavingRef = useRef(false);
   const hasUnsavedRef = useRef(false);
   const lastSavedRoundRef = useRef(0);
+
+  // Font size state (persisted to localStorage)
+  const [fontSize, setFontSize] = useState<FontSizeKey>("medium");
+  const [showFontMenu, setShowFontMenu] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("fontSize");
+    if (saved && saved in FONT_SIZES) setFontSize(saved as FontSizeKey);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("fontSize", fontSize);
+  }, [fontSize]);
 
   const { game, messages, memory } = state;
 
@@ -574,6 +594,30 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             )}
             {game.roundNumber >= 1 && (
               <>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowFontMenu(!showFontMenu)}
+                    className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                    title="字體大小"
+                  >
+                    Aa
+                  </button>
+                  {showFontMenu && (
+                    <div className="absolute top-full mt-1 right-0 glass-panel rounded-lg p-1 flex gap-1 animate-fade-in z-50">
+                      {(Object.keys(FONT_SIZES) as FontSizeKey[]).map((key) => (
+                        <button
+                          key={key}
+                          onClick={() => { setFontSize(key); setShowFontMenu(false); }}
+                          className={`px-2.5 py-1 rounded text-xs whitespace-nowrap transition-all ${
+                            fontSize === key ? "btn-ancient text-gold" : "text-ghost-white/50 hover:text-gold/70"
+                          }`}
+                        >
+                          {FONT_SIZES[key].label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={handleManualSave}
                   disabled={isSavingRef.current}
@@ -646,7 +690,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
           {messages.map((msg, index) => (
             <div key={msg.id} id={`message-${index}`}>
-              <MessageBubble message={msg} />
+              <MessageBubble message={msg} fontSizeClass={FONT_SIZES[fontSize].message} />
             </div>
           ))}
 
@@ -899,7 +943,7 @@ async function fetchTtsChunk(text: string): Promise<Blob | null> {
 }
 
 /* ===== Message Bubble with TTS ===== */
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, fontSizeClass = "text-base" }: { message: ChatMessage; fontSizeClass?: string }) {
   const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing" | "paused">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
@@ -1014,7 +1058,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {isUser && (
           <div className="text-[10px] text-ghost-white/50 mb-1.5 tracking-wider">— 你 —</div>
         )}
-        <div className={`text-[15px] leading-relaxed whitespace-pre-wrap ${
+        <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap ${
           isUser ? "text-ghost-white/95" : "text-ghost-white"
         }`}>
           {message.content}
