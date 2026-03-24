@@ -266,7 +266,7 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
       </button>
 
       {showControls && (
-        <div className="absolute top-10 right-0 glass-panel rounded-xl p-3 w-[calc(100vw-2rem)] sm:w-52 max-w-[13rem] space-y-3 animate-fade-in">
+        <div className="absolute top-10 right-0 glass-panel rounded-xl p-3 w-[calc(100vw-2rem)] sm:w-52 max-w-[13rem] space-y-3 animate-fade-in" style={{ touchAction: "pan-y" }}>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-ghost-white/40 w-6">音量</span>
             <input
@@ -277,7 +277,8 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
               onInput={(e) => setVolume(Number((e.target as HTMLInputElement).value))}
-              className="flex-1 h-6"
+              className="flex-1 h-8 min-h-[44px] cursor-pointer"
+              style={{ touchAction: "none" }}
             />
             <span className="text-[10px] text-ghost-white/40 tabular-nums w-8">{Math.round(volume * 100)}%</span>
           </div>
