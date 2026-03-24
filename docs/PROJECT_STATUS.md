@@ -1,6 +1,6 @@
 # 倩女幽魂 RPG - 專案狀態
 
-> 最後更新：2026-03-24（安全修復完成）
+> 最後更新：2026-03-25（手動存檔 + 離開前存檔）
 > 更新者：Claude Code
 
 ---
@@ -71,6 +71,25 @@
 - [x] P1：泛用選項禁止清單擴充
   - 從 6 個 pattern 擴充到 17 個
   - 門檻從命中 2 個降到 1 個（更嚴格）
+
+---
+
+### 存檔體驗強化
+
+- [x] 手動存檔按鈕（💾 存檔）
+  - 新增 `handleManualSave()`，取最後一輪 user/assistant 訊息呼叫 `autoSave()`
+  - 無未存檔變更時閃一下「已儲存」提示，不重複寫入
+  - 新增 `hasUnsavedRef` / `lastSavedRoundRef` 追蹤未存檔狀態
+
+- [x] 返回角色列表前先存檔
+  - `handleSaveAndBack()` → 有未存檔時 `await handleManualSave()` → `onBackToSlots()`
+
+- [x] 匯出故事 / 分享作品前先存檔
+  - onClick 改為 async，有未存檔時先 `await handleManualSave()` 再執行原邏輯
+
+- [x] beforeunload 改進提示
+  - 條件擴展：`isSavingRef.current || hasUnsavedRef.current`
+  - 存檔中 → 提示等待完成；有未存檔變更 → 提示點擊存檔按鈕
 
 ---
 
@@ -163,7 +182,9 @@
 6. **autoSave**：await 模式，重試 3 次，間隔遞增
 7. **存檔原子性**：batch insert conversation_logs，失敗不寫入
 8. **round_number 驗證**：載入時以 conversation_logs 為 source of truth
-9. **beforeunload 攔截**：存檔進行中時提示使用者
+9. **beforeunload 攔截**：存檔進行中或有未存檔變更時提示使用者
+14. **手動存檔**：取最後一輪訊息重新呼叫 autoSave，無變更時不重複寫入
+15. **離開前存檔**：返回角色列表、匯出故事、分享作品前自動存檔
 10. **密碼 hash**：bcryptjs，salt rounds = 10，舊玩家自動升級
 11. **JWT**：jose HS256，7 天過期，存 sessionStorage
 12. **API 認證**：所有遊戲 API 都驗證 JWT（auth route 的 list/login/register 除外）
