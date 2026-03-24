@@ -62,6 +62,41 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
   const fadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const targetVolumeRef = useRef(volume);
 
+  // Web Audio API（iOS 需要 GainNode 才能控制音量）
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  function getAudioContext(): AudioContext {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      gainNodeRef.current = audioCtxRef.current.createGain();
+      gainNodeRef.current.connect(audioCtxRef.current.destination);
+    }
+    return audioCtxRef.current;
+  }
+
+  function connectToGain(audio: HTMLAudioElement) {
+    // 每個 HTMLMediaElement 只能 createMediaElementSource 一次
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.disconnect(); } catch { /* ignore */ }
+    }
+    const ctx = getAudioContext();
+    sourceNodeRef.current = ctx.createMediaElementSource(audio);
+    sourceNodeRef.current.connect(gainNodeRef.current!);
+    // 設定 audio.volume = 1，讓 GainNode 全權控制
+    audio.volume = 1;
+  }
+
+  function applyVolume(vol: number) {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = vol;
+    } else if (audioRef.current) {
+      // fallback（AudioContext 尚未初始化時）
+      audioRef.current.volume = vol;
+    }
+  }
+
   // 更新目標音量 ref
   useEffect(() => { targetVolumeRef.current = volume; }, [volume]);
 
@@ -71,17 +106,22 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     || PHASE_BGM[phase]
     || PHASE_BGM.login;
 
-  // 淡出音訊
+  // 淡出音訊（透過 GainNode）
   const fadeOut = useCallback((audio: HTMLAudioElement): Promise<void> => {
     return new Promise((resolve) => {
       if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
-      const startVol = audio.volume;
+      const startVol = gainNodeRef.current?.gain.value ?? audio.volume;
       const steps = 20;
       const stepTime = FADE_DURATION / steps;
       let step = 0;
       fadeTimerRef.current = setInterval(() => {
         step++;
-        audio.volume = Math.max(0, startVol * (1 - step / steps));
+        const v = Math.max(0, startVol * (1 - step / steps));
+        if (gainNodeRef.current) {
+          gainNodeRef.current.gain.value = v;
+        } else {
+          audio.volume = v;
+        }
         if (step >= steps) {
           if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
           fadeTimerRef.current = null;
@@ -92,16 +132,16 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     });
   }, []);
 
-  // 淡入音訊
-  const fadeIn = useCallback((audio: HTMLAudioElement, targetVol: number) => {
+  // 淡入音訊（透過 GainNode）
+  const fadeIn = useCallback((_audio: HTMLAudioElement, targetVol: number) => {
     if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
-    audio.volume = 0;
+    applyVolume(0);
     const steps = 20;
     const stepTime = FADE_DURATION / steps;
     let step = 0;
     fadeTimerRef.current = setInterval(() => {
       step++;
-      audio.volume = Math.min(targetVol, targetVol * (step / steps));
+      applyVolume(Math.min(targetVol, targetVol * (step / steps)));
       if (step >= steps) {
         if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
         fadeTimerRef.current = null;
@@ -135,14 +175,21 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     // 載入新音樂
     const audio = new Audio(newSrc);
     audio.loop = true;
-    audio.volume = 0;
+    audio.crossOrigin = "anonymous";
     audio.onerror = () => console.error("BGM load error:", newSrc);
     audioRef.current = audio;
     currentSrcRef.current = newSrc;
 
+    // 連接 Web Audio API GainNode（iOS 音量控制必須）
+    connectToGain(audio);
+    applyVolume(0);
+
     if (enabled) {
+      // 確保 AudioContext 在用戶互動後 resume
+      if (audioCtxRef.current?.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
       tryPlay(audio);
-      // 淡入
       fadeIn(audio, targetVolumeRef.current);
     }
   }, [enabled, fadeOut, fadeIn, tryPlay]);
@@ -156,6 +203,10 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
   useEffect(() => {
     if (!needsInteraction) return;
     function unlock() {
+      // iOS 需要在用戶互動時 resume AudioContext
+      if (audioCtxRef.current?.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
       if (audioRef.current && enabled) {
         audioRef.current.play().then(() => setNeedsInteraction(false)).catch(() => {});
       }
@@ -186,44 +237,39 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     }
   }, [enabled, tryPlay, fadeIn, fadeOut, volume]);
 
-  // 音量變化 — 如果沒有淡入淡出正在進行，立即套用
+  // 音量變化 — 如果沒有淡入淡出正在進行，立即套用（透過 GainNode）
   useEffect(() => {
     localStorage.setItem("bgm_volume", String(volume));
-    // 如果正在淡入淡出，不要中斷（淡入淡出完成後會套用目標音量）
     if (fadeTimerRef.current) {
       console.log("[音量控制] 淡入淡出進行中，音量已儲存，待完成後套用");
       return;
     }
-    if (audioRef.current) {
-      audioRef.current.volume = ducking ? volume * 0.2 : volume;
-      console.log("[音量控制] 已套用 audio.volume =", audioRef.current.volume);
-    }
+    const target = ducking ? volume * 0.2 : volume;
+    applyVolume(target);
+    console.log("[音量控制] 已套用 GainNode volume =", target);
   }, [volume, ducking]);
 
-  // TTS ducking：語音播放時 BGM 降到 20%
+  // TTS ducking：語音播放時 BGM 降到 20%（透過 GainNode）
   useEffect(() => {
-    if (!audioRef.current) return;
     const target = ducking ? volume * 0.2 : volume;
-    audioRef.current.volume = target;
+    applyVolume(target);
   }, [ducking, volume]);
 
   // 開發用測試函數
   useEffect(() => {
     if (typeof window === "undefined") return;
     (window as unknown as Record<string, unknown>).testVolume = (vol: number) => {
-      if (!audioRef.current) {
-        console.error("[音量控制] audioRef 不存在，無法測試");
-        return;
-      }
       const clamped = Math.max(0, Math.min(1, vol));
-      audioRef.current.volume = clamped;
+      applyVolume(clamped);
       setVolumeRaw(clamped);
-      console.log("[音量控制] testVolume 已設定:", clamped);
+      console.log("[音量控制] testVolume 已設定 (GainNode):", clamped);
     };
     (window as unknown as Record<string, unknown>).debugBgm = () => ({
       audioExists: !!audioRef.current,
       paused: audioRef.current?.paused,
-      currentVolume: audioRef.current?.volume,
+      audioVolume: audioRef.current?.volume,
+      gainNodeValue: gainNodeRef.current?.gain.value,
+      audioCtxState: audioCtxRef.current?.state,
       stateVolume: volume,
       savedVolume: localStorage.getItem("bgm_volume"),
       currentSrc: currentSrcRef.current,
@@ -240,6 +286,7 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
     return () => {
       if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
       audioRef.current?.pause();
+      audioCtxRef.current?.close().catch(() => {});
     };
   }, []);
 
