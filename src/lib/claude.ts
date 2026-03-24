@@ -18,14 +18,15 @@ interface ClaudeMessage {
 interface ClaudeResponse {
   content: Array<{ type: "text"; text: string }>;
   usage: { input_tokens: number; output_tokens: number };
+  stop_reason: "end_turn" | "max_tokens" | "stop_sequence" | null;
 }
 
 export async function callClaude(
   systemPrompt: string,
   messages: ClaudeMessage[],
   model: "sonnet" | "haiku" = "sonnet",
-  maxTokens: number = 1500
-): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+  maxTokens: number = 3000
+): Promise<{ text: string; inputTokens: number; outputTokens: number; truncated: boolean }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is not set");
@@ -52,11 +53,13 @@ export async function callClaude(
   }
 
   const data: ClaudeResponse = await response.json();
+  const truncated = data.stop_reason === "max_tokens";
 
   return {
     text: data.content[0]?.text ?? "",
     inputTokens: data.usage.input_tokens,
     outputTokens: data.usage.output_tokens,
+    truncated,
   };
 }
 
@@ -92,6 +95,6 @@ export async function extractFactsWithHaiku(
     systemPrompt,
     [{ role: "user", content: conversationText }],
     "haiku",
-    500
+    1000
   );
 }

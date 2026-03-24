@@ -14,6 +14,42 @@ function getSupabase() {
 }
 
 /**
+ * 嘗試修復被截斷的 JSON（補上缺少的括號）
+ */
+function tryRepairJson(raw: string): Record<string, unknown> | null {
+  // 計算未閉合的括號
+  let braces = 0;
+  let brackets = 0;
+  let inString = false;
+  let escape = false;
+
+  for (const ch of raw) {
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") braces++;
+    else if (ch === "}") braces--;
+    else if (ch === "[") brackets++;
+    else if (ch === "]") brackets--;
+  }
+
+  // 如果在字串中被截斷，先關閉字串
+  let fixed = raw;
+  if (inString) fixed += '"';
+
+  // 補上缺少的 ] 和 }
+  for (let i = 0; i < brackets; i++) fixed += "]";
+  for (let i = 0; i < braces; i++) fixed += "}";
+
+  try {
+    return JSON.parse(fixed);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * POST /api/summarize — 用 Haiku 生成摘要 + 提取關鍵事實，並持久化到 DB
  */
 export async function POST(request: NextRequest) {
@@ -65,15 +101,26 @@ export async function POST(request: NextRequest) {
       endpoint: "extract_facts",
     });
 
-    // 解析事實 JSON
+    // 解析事實 JSON（含截斷修復）
     let facts = null;
-    try {
-      const jsonMatch = factsResult.text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        facts = JSON.parse(jsonMatch[0]);
+    const jsonMatch = factsResult.text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const rawJson = jsonMatch[0];
+      try {
+        facts = JSON.parse(rawJson);
+      } catch {
+        // JSON 可能被 token 限制截斷，嘗試修復
+        console.warn("[extractFacts] JSON parse failed, attempting repair...");
+        const repaired = tryRepairJson(rawJson);
+        if (repaired) {
+          facts = repaired;
+          console.log("[extractFacts] JSON was truncated, fixed successfully");
+        } else {
+          console.warn("[extractFacts] JSON repair failed, raw:", rawJson.slice(0, 300));
+        }
       }
-    } catch {
-      console.warn("Failed to parse facts JSON:", factsResult.text);
+    } else {
+      console.warn("[extractFacts] No JSON found in response:", factsResult.text.slice(0, 200));
     }
 
     const summaryText = `第${startRound}-${endRound}輪：${summaryResult.text}`;

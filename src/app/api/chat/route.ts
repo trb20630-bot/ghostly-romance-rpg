@@ -4,6 +4,7 @@ import { assemblePrompt } from "@/lib/prompts";
 import { logTokenUsage } from "@/lib/token-logger";
 import { validateContextBeforeAI } from "@/lib/context-guard";
 import { validateAndFixResponse } from "@/lib/validateResponse";
+import { getNpcNames } from "@/lib/prompts/characters";
 import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
@@ -67,10 +68,17 @@ export async function POST(request: NextRequest) {
     // 呼叫 Claude
     const result = await callClaude(systemPrompt, messages, model);
 
-    // 驗證回應：確保有玩家引導選項
+    // 取得當前場景 NPC 名單（用於選項生成）
+    const sceneNpcs = gameState.player?.character
+      ? getNpcNames(gameState.player.character, gameState.currentLocation)
+      : undefined;
+
+    // 驗證回應：確保有完整的玩家引導選項（含 NPC 上下文）
     result.text = validateAndFixResponse(result.text, {
       location: gameState.currentLocation,
       phase: gameState.phase,
+      npcs: sceneNpcs,
+      truncated: result.truncated,
     });
 
     // Token 監控（fire-and-forget）

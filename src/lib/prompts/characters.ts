@@ -56,4 +56,14 @@ export function getNpcPrompt(character: string, location: string): string {
   return `\n## 當前場景NPC\n${lines}`;
 }
 
+/**
+ * 取得當前場景的 NPC 名字列表（用於選項驗證）
+ */
+export function getNpcNames(character: string, location: string): string[] {
+  const key = `${character}_${location}`;
+  const npcs = NPC_DATA[key];
+  if (!npcs) return [];
+  return Object.keys(npcs);
+}
+
 export type CharacterKey = keyof typeof CHARACTER_PROMPTS;

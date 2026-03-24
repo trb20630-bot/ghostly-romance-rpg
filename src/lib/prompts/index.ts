@@ -99,9 +99,9 @@ export function assemblePrompt(
 }
 
 /**
- * 將記憶轉化為壓縮 Prompt 上下文（~200 tokens）
+ * 將記憶轉化為壓縮 Prompt 上下文（~500 tokens）
  * key_facts：逗號分隔不換行
- * story_summaries：最多 5 條，每條限 50 字
+ * story_summaries：最多 10 條，每條限 150 字，超過時合併最舊的
  */
 function buildMemoryContext(memory: PlayerMemory): string {
   const parts: string[] = ["## 記憶"];
@@ -121,11 +121,19 @@ function buildMemoryContext(memory: PlayerMemory): string {
     parts.push(factEntries.join("；"));
   }
 
-  // 劇情摘要（最多保留最近 5 條，每條截斷至 50 字）
+  // 劇情摘要：保留最近 10 條，超過時合併最舊的 3 條
   if (memory.storySummaries.length > 0) {
-    const recentSummaries = memory.storySummaries.slice(-5);
-    const trimmed = recentSummaries.map((s) =>
-      s.length > 50 ? s.slice(0, 50) + "…" : s
+    let summaries = [...memory.storySummaries];
+
+    // 超過 10 條時，把最舊的 3 條合併成 1 條
+    while (summaries.length > 10) {
+      const oldestThree = summaries.slice(0, 3);
+      const merged = "【早期】" + oldestThree.map((s) => s.slice(0, 50)).join("；");
+      summaries = [merged, ...summaries.slice(3)];
+    }
+
+    const trimmed = summaries.map((s) =>
+      s.length > 150 ? s.slice(0, 150) + "…" : s
     );
     parts.push("摘要：" + trimmed.join("｜"));
   }
@@ -136,13 +144,13 @@ function buildMemoryContext(memory: PlayerMemory): string {
 /**
  * Haiku 用的摘要生成 Prompt
  */
-export const SUMMARY_PROMPT = `你是故事摘要助手。將以下對話壓縮成50字內摘要，保留：關鍵轉折、角色互動、玩家選擇、新秘密。格式：直接輸出摘要文字。`;
+export const SUMMARY_PROMPT = `你是故事摘要助手。將以下對話壓縮成100字內摘要，保留：關鍵轉折、角色互動、玩家選擇、新秘密。格式：直接輸出摘要文字。`;
 
 /**
  * Haiku 用的關鍵事實提取 Prompt
  */
-export const EXTRACT_FACTS_PROMPT = `從對話中提取新增事實，JSON格式回傳：
+export const EXTRACT_FACTS_PROMPT = `從對話中提取新增事實，僅回傳精簡JSON，每個欄位最多3項，每項10字內：
 {"new_enemies":[],"new_allies":[],"new_promises":[],"new_secrets":[],"new_kills":[],"new_items":[],"new_places":[],"location_change":null,"time_change":null,"phase_transition":null}
-沒有則留空陣列。`;
+沒有則留空陣列。不要加額外說明，只回傳JSON。`;
 
 export { shouldUseHaiku } from "./core";

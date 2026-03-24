@@ -40,6 +40,10 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const readAllAudioRef = useRef<HTMLAudioElement | null>(null);
   const readAllAbortRef = useRef(false);
 
+  // Summarize retry state
+  const summarizeRetryRef = useRef(0);
+  const summarizePausedUntilRef = useRef(0);
+
   const { game, messages, memory } = state;
 
   // Auto-scroll
@@ -156,10 +160,25 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           autoSave(text, rawResponse, data.model, game.roundNumber + 1);
         }
 
-        // 超過 10 輪未摘要就觸發摘要
-        const unsummarizedRounds = (game.roundNumber + 1) - memory.lastSummarizedRound;
-        if (unsummarizedRounds > 10) {
-          triggerSummarize();
+        // 摘要觸發：首次 5 輪，之後每 10 輪（含暫停檢查）
+        const nextRound = game.roundNumber + 1;
+        const unsummarizedRounds = nextRound - memory.lastSummarizedRound;
+        const isFirstSummarize = memory.lastSummarizedRound === 0;
+        const threshold = isFirstSummarize ? 5 : 10;
+        if (unsummarizedRounds > threshold) {
+          if (summarizePausedUntilRef.current > nextRound) {
+            console.log(
+              `[triggerSummarize] 暫停中，等待到第 ${summarizePausedUntilRef.current} 輪 ` +
+              `(目前第 ${nextRound} 輪)`
+            );
+          } else {
+            if (summarizePausedUntilRef.current > 0) {
+              console.log("[triggerSummarize] 暫停結束，重新嘗試摘要...");
+              summarizeRetryRef.current = 0;
+              summarizePausedUntilRef.current = 0;
+            }
+            triggerSummarize();
+          }
         }
       } catch (err) {
         dispatch({
@@ -214,22 +233,31 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   }, [game.phase, game.player]);
 
   async function triggerSummarize() {
+    const attempt = summarizeRetryRef.current + 1;
+
     try {
-      // 過濾掉 system 訊息，並根據 user/assistant 配對來計算 round
+      // 過濾掉 system 訊息
       const filtered = messages.filter((m) => m.role !== "system");
+
+      // 計算 messages 中有幾輪（assistant 訊息數 = 完成的輪數）
+      const totalPairsInMessages = filtered.filter((m) => m.role === "assistant").length;
+
+      // 用 game.roundNumber 反推第一輪的真實 round_number
+      const firstRound = game.roundNumber - totalPairsInMessages + 1;
+
+      // 為每條訊息標記真實的 round_number
       const convs: Array<{ round_number: number; role: string; content: string; phase: string }> = [];
-      let roundCounter = 1;
+      let currentRound = firstRound;
       for (let i = 0; i < filtered.length; i++) {
         const msg = filtered[i];
         convs.push({
-          round_number: roundCounter,
+          round_number: currentRound,
           role: msg.role,
           content: msg.content,
           phase: game.phase,
         });
-        // 每遇到一條 assistant 訊息就完成一輪
         if (msg.role === "assistant") {
-          roundCounter++;
+          currentRound++;
         }
       }
 
@@ -240,44 +268,109 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
         (c) => c.round_number >= startRound && c.round_number <= endRound
       );
 
-      if (unsummarized.length === 0) return;
+      console.log(
+        `[triggerSummarize] attempt ${attempt}/3 | convs range: ${firstRound}-${currentRound - 1}, ` +
+        `startRound: ${startRound}, endRound: ${endRound}, ` +
+        `unsummarized count: ${unsummarized.length}`
+      );
 
-      const res = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversations: unsummarized,
-          startRound,
-          endRound,
-          sessionId: game.sessionId,
-          playerId,
-        }),
+      if (unsummarized.length === 0) {
+        console.warn(
+          "[triggerSummarize] No unsummarized conversations found. " +
+          `messages pairs: ${totalPairsInMessages}, game.roundNumber: ${game.roundNumber}, ` +
+          `lastSummarizedRound: ${memory.lastSummarizedRound}`
+        );
+        return;
+      }
+
+      // 30 秒 timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      let res: Response;
+      try {
+        res = await fetch("/api/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversations: unsummarized,
+            startRound,
+            endRound,
+            sessionId: game.sessionId,
+            playerId,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      // 讀取 response body 一次（body 只能讀一次）
+      const rawText = await res.text();
+
+      if (!res.ok) {
+        throw new Error(`API error ${res.status}: ${rawText.slice(0, 500)}`);
+      }
+
+      // 解析 JSON — 單獨 catch 以區分 parse 錯誤
+      let data: { summary?: string; facts?: Record<string, string[]> };
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error(
+          `[triggerSummarize] JSON parse failed. Raw response (first 500 chars):\n` +
+          rawText.slice(0, 500)
+        );
+        throw new Error(`JSON parse error: ${parseErr instanceof Error ? parseErr.message : "unknown"}`);
+      }
+
+      // 成功 — 更新記憶 + 重置重試計數
+      dispatch({
+        type: "UPDATE_MEMORY",
+        payload: {
+          storySummaries: data.summary ? [data.summary] : [],
+          lastSummarizedRound: game.roundNumber,
+          ...(data.facts && {
+            keyFacts: {
+              enemies: data.facts.new_enemies || [],
+              allies: data.facts.new_allies || [],
+              promises: data.facts.new_promises || [],
+              secrets: data.facts.new_secrets || [],
+              kills: data.facts.new_kills || [],
+              learned_skills: [],
+              visited_places: data.facts.new_places || [],
+              important_items: data.facts.new_items || [],
+            },
+          }),
+        },
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        dispatch({
-          type: "UPDATE_MEMORY",
-          payload: {
-            storySummaries: [data.summary],
-            lastSummarizedRound: game.roundNumber,
-            ...(data.facts && {
-              keyFacts: {
-                enemies: data.facts.new_enemies || [],
-                allies: data.facts.new_allies || [],
-                promises: data.facts.new_promises || [],
-                secrets: data.facts.new_secrets || [],
-                kills: data.facts.new_kills || [],
-                learned_skills: [],
-                visited_places: data.facts.new_places || [],
-                important_items: data.facts.new_items || [],
-              },
-            }),
-          },
-        });
+      summarizeRetryRef.current = 0;
+      console.log(
+        `[triggerSummarize] Success: summarized rounds ${startRound}-${endRound}, ` +
+        `facts extracted: ${data.facts ? "yes" : "no"}`
+      );
+    } catch (err) {
+      // 不更新 lastSummarizedRound，讓下一輪自動重試
+      summarizeRetryRef.current = attempt;
+
+      if (err instanceof DOMException && err.name === "AbortError") {
+        console.error(`[triggerSummarize] Timeout after 30s (attempt ${attempt}/3)`);
+      } else {
+        console.error(
+          `[triggerSummarize] Failed (attempt ${attempt}/3):`,
+          err instanceof Error ? err.message : err
+        );
       }
-    } catch {
-      // Silent fail
+
+      if (attempt >= 3) {
+        const pauseUntil = game.roundNumber + 5;
+        summarizePausedUntilRef.current = pauseUntil;
+        console.warn(
+          `[triggerSummarize] 連續失敗 ${attempt} 次，暫停摘要功能，` +
+          `等待到第 ${pauseUntil} 輪後重試`
+        );
+      }
     }
   }
 
