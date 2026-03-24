@@ -171,7 +171,7 @@ export function gameReducer(
  */
 export function getRecentHistory(
   messages: ChatMessage[],
-  rounds: number = 10
+  rounds: number = 8
 ): ChatMessage[] {
   // 每輪 = 一組 user + assistant
   const pairs: ChatMessage[][] = [];

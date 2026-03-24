@@ -140,7 +140,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
       dispatch({ type: "ADD_MESSAGE", payload: userMsg });
 
       try {
-        const recentHistory = getRecentHistory([...messages, userMsg], 10);
+        const recentHistory = getRecentHistory([...messages, userMsg]);
         const res = await authFetch("/api/chat", {
           method: "POST",
           body: JSON.stringify({
