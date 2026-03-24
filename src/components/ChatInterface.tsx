@@ -49,6 +49,8 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSavingRef = useRef(false);
+  const hasUnsavedRef = useRef(false);
+  const lastSavedRoundRef = useRef(0);
 
   const { game, messages, memory } = state;
 
@@ -60,12 +62,16 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     });
   }, [messages]);
 
-  // 關閉頁面前攔截：未存檔時提示
+  // 關閉頁面前攔截：有未存檔變更或正在存檔時提示
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isSavingRef.current) {
+      if (isSavingRef.current || hasUnsavedRef.current) {
         e.preventDefault();
-        e.returnValue = "存檔尚未完成，確定要離開嗎？";
+        const msg = isSavingRef.current
+          ? "⚠️ 存檔尚未完成！請等待存檔完成後再離開，否則最新進度將會遺失。"
+          : `⚠️ 你有第 ${lastSavedRoundRef.current + 1} 輪之後的冒險尚未存檔！\n\n請先點擊右上角「💾 存檔」按鈕保存進度，再關閉頁面。`;
+        e.returnValue = msg;
+        return msg;
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -172,12 +178,16 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
         // 立刻解鎖輸入框 — 存檔和摘要在背景完成
         setLoading(false);
+        hasUnsavedRef.current = true;
 
         // 存檔 → INCREMENT_ROUND → 摘要（不阻塞 UI）
         const nextRound = game.roundNumber + 1;
         if (game.sessionId) {
           const saved = await autoSave(text, rawResponse, data.model, nextRound);
-          if (!saved) {
+          if (saved) {
+            hasUnsavedRef.current = false;
+            lastSavedRoundRef.current = nextRound;
+          } else {
             console.warn(`[sendMessage] autoSave failed for round ${nextRound}, proceeding anyway`);
           }
         }
@@ -269,6 +279,45 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 5000);
     console.error(`[autoSave] Round ${round} failed after ${MAX_RETRIES} attempts`);
     return false;
+  }
+
+  // 手動存檔：重新存當前最後一輪
+  async function handleManualSave() {
+    if (isSavingRef.current || !game.sessionId) return;
+    if (!hasUnsavedRef.current && lastSavedRoundRef.current >= game.roundNumber) {
+      // 沒有未存檔的變更，閃一下「已儲存」
+      setSaveStatus("saved");
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
+      return;
+    }
+
+    // 取最後一輪的 user/assistant 訊息
+    const assistantMsgs = messages.filter((m) => m.role === "assistant");
+    const userMsgs = messages.filter((m) => m.role === "user");
+    if (assistantMsgs.length === 0 || userMsgs.length === 0) return;
+
+    const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
+    const lastUser = userMsgs[userMsgs.length - 1];
+
+    const saved = await autoSave(
+      lastUser.content,
+      lastAssistant.content,
+      lastAssistant.model || "sonnet",
+      game.roundNumber
+    );
+    if (saved) {
+      hasUnsavedRef.current = false;
+      lastSavedRoundRef.current = game.roundNumber;
+    }
+  }
+
+  // 返回角色列表前先存檔
+  async function handleSaveAndBack() {
+    if (game.sessionId && hasUnsavedRef.current) {
+      await handleManualSave();
+    }
+    onBackToSlots?.();
   }
 
   // Auto-start death phase
@@ -515,13 +564,29 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             {game.roundNumber >= 1 && (
               <>
                 <button
-                  onClick={() => dispatch({ type: "SET_PHASE", payload: "export" })}
+                  onClick={handleManualSave}
+                  disabled={isSavingRef.current}
+                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap disabled:opacity-40"
+                  title="手動存檔"
+                >
+                  💾 存檔
+                </button>
+                <button
+                  onClick={async () => {
+                    if (game.sessionId && hasUnsavedRef.current) {
+                      await handleManualSave();
+                    }
+                    dispatch({ type: "SET_PHASE", payload: "export" });
+                  }}
                   className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
                 >
                   匯出故事
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    if (game.sessionId && hasUnsavedRef.current) {
+                      await handleManualSave();
+                    }
                     const charName = game.player?.characterName || game.player?.character || "";
                     setShareTitle(`那些關於我轉生成為${charName}的那件事`);
                     setShareResult(null);
@@ -542,7 +607,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             </button>
             {onBackToSlots && (
               <button
-                onClick={onBackToSlots}
+                onClick={handleSaveAndBack}
                 className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
               >
                 返回角色列表
