@@ -54,8 +54,19 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
   const { game, messages, memory } = state;
 
-  // Auto-scroll
+  // Auto-scroll：AI 回覆完成後滾動到該訊息的第一行
   useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === "assistant") {
+        const messageElement = document.getElementById(`message-${messages.length - 1}`);
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+    }
+    // 非 assistant 訊息（user 輸入）仍滾動到底部
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
@@ -633,8 +644,10 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             </div>
           )}
 
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+          {messages.map((msg, index) => (
+            <div key={msg.id} id={`message-${index}`}>
+              <MessageBubble message={msg} />
+            </div>
           ))}
 
           {loading && (
