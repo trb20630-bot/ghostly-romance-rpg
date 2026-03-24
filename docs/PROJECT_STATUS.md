@@ -1,6 +1,6 @@
 # 倩女幽魂 RPG - 專案狀態
 
-> 最後更新：2026-03-24
+> 最後更新：2026-03-24（安全修復完成）
 > 更新者：Claude Code
 
 ---
@@ -80,11 +80,41 @@
 
 ---
 
+### 資料隔離與安全（問題 5）
+
+- [x] P0：密碼明文儲存 → bcrypt hash
+  - 註冊時 `bcrypt.hash(password, 10)`
+  - 登入時 `bcrypt.compare(password, hash)`
+  - 舊玩家自動升級：明文比對成功後自動 hash 化
+
+- [x] P1：JWT 認證
+  - 新增 `lib/jwt.ts`（jose 簽發 + 驗證，7 天過期）
+  - 新增 `lib/auth-guard.ts`（從 Authorization header 提取 JWT）
+  - 登入時回傳 token，前端存 sessionStorage
+  - 所有 API（chat/save/summarize/game）驗證 JWT
+
+- [x] P1：/api/save session 歸屬驗證
+  - 寫入前查 `game_sessions` 確認 sessionId 屬於 playerId
+  - 不屬於則回傳 403
+
+- [x] P1：前端統一用 authFetch
+  - 新增 `lib/api-client.ts` 自動附加 Authorization header
+  - ChatInterface、CharacterSelect、page.tsx 全部改用 authFetch
+
+- [x] P3：移除 `__session_refresh__` 假密碼 hack
+  - handleBackToSlots 不再用假密碼重新登入，改為 reload（token 持久）
+
+---
+
+## 🔄 進行中
+
+（目前無）
+
+---
+
 ## ⏳ 待處理
 
-### 問題 5：資料隔離
-- 需確認 AI 回答內容是否鎖定在該玩家的遊玩內容內
-- 尚未診斷
+（目前無）
 
 ---
 
@@ -92,13 +122,16 @@
 
 | 功能 | 檔案 |
 |------|------|
+| JWT 簽發/驗證 | `app/src/lib/jwt.ts` |
+| API 認證守衛 | `app/src/lib/auth-guard.ts` |
+| 前端認證 fetch | `app/src/lib/api-client.ts` |
 | 摘要觸發邏輯 | `app/src/components/ChatInterface.tsx:163-180` |
 | triggerSummarize | `app/src/components/ChatInterface.tsx` |
 | autoSave（含重試） | `app/src/components/ChatInterface.tsx` |
 | 記憶注入 prompt | `app/src/lib/prompts/index.ts:106-142` |
 | extractFacts API | `app/src/app/api/summarize/route.ts` |
 | JSON 截斷修復 | `app/src/app/api/summarize/route.ts:19-50` |
-| 存檔 API（原子操作） | `app/src/app/api/save/route.ts` |
+| 存檔 API（原子+歸屬驗證） | `app/src/app/api/save/route.ts` |
 | Haiku 設定 | `app/src/lib/claude.ts` |
 | System Prompt 核心 | `app/src/lib/prompts/core.ts` |
 | 遊戲狀態管理 | `app/src/lib/game-store.ts` |
@@ -119,6 +152,10 @@
 7. **存檔原子性**：batch insert conversation_logs，失敗不寫入
 8. **round_number 驗證**：載入時以 conversation_logs 為 source of truth
 9. **beforeunload 攔截**：存檔進行中時提示使用者
+10. **密碼 hash**：bcryptjs，salt rounds = 10，舊玩家自動升級
+11. **JWT**：jose HS256，7 天過期，存 sessionStorage
+12. **API 認證**：所有遊戲 API 都驗證 JWT（auth route 的 list/login/register 除外）
+13. **session 歸屬**：/api/save 寫入前驗證 sessionId 屬於 JWT 中的 playerId
 
 ---
 

@@ -5,6 +5,7 @@ import { useGame } from "./GameProvider";
 import { getRecentHistory } from "@/lib/game-store";
 import { extractSceneTag, cleanSceneTag, isAbnormalTransition, logMusicSwitch, detectSceneFromContent, SCENE_BGM } from "@/lib/scene-bgm";
 import type { ChatMessage } from "@/types/game";
+import { authFetch } from "@/lib/api-client";
 
 const PHASE_LABELS: Record<string, string> = {
   death: "現代篇",
@@ -75,9 +76,8 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   useEffect(() => {
     if (!game.sessionId) return;
     const sendHeartbeat = () => {
-      fetch("/api/save", {
+      authFetch("/api/save", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: game.sessionId }),
       }).catch(() => {
         // 網路斷線時靜默失敗，不影響遊玩
@@ -104,9 +104,8 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
       try {
         const recentHistory = getRecentHistory([...messages, userMsg], 10);
-        const res = await fetch("/api/chat", {
+        const res = await authFetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
             gameState: game,
@@ -227,9 +226,8 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch("/api/save", {
+        const res = await authFetch("/api/save", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: game.sessionId,
             roundNumber: round,
@@ -342,9 +340,8 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
       let res: Response;
       try {
-        res = await fetch("/api/summarize", {
+        res = await authFetch("/api/summarize", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversations: unsummarized,
             startRound,

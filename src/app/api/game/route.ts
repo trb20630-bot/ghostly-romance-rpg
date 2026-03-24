@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticateRequest, unauthorizedResponse } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -15,8 +16,15 @@ function getSupabaseAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
+    // JWT 驗證
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return unauthorizedResponse();
+    }
+
     const body = await request.json();
-    const { playerId, slotNumber, characterName, playerAge, playerGender, playerOccupation, chosenCharacter } = body;
+    const { slotNumber, characterName, playerAge, playerGender, playerOccupation, chosenCharacter } = body;
+    const playerId = auth.playerId;
 
     const supabase = getSupabaseAdmin();
 
@@ -79,6 +87,12 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
+    // JWT 驗證
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return unauthorizedResponse();
+    }
+
     const body = await request.json();
     const { sessionId, ...updates } = body;
 
@@ -88,10 +102,12 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
+    // 驗證 session 歸屬
     const { data, error } = await supabase
       .from("game_sessions")
       .update(updates)
       .eq("id", sessionId)
+      .eq("player_id", auth.playerId)
       .select()
       .single();
 

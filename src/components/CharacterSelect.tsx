@@ -1,6 +1,7 @@
 "use client";
 
 import { useGame } from "./GameProvider";
+import { authFetch } from "@/lib/api-client";
 
 const CHARACTERS = [
   {
@@ -42,11 +43,9 @@ export default function CharacterSelect({ playerId, slotNumber }: { playerId?: s
     // Create game session in Supabase
     if (playerId) {
       try {
-        const res = await fetch("/api/game", {
+        const res = await authFetch("/api/game", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            playerId,
             slotNumber: slotNumber || 1,
             characterName: state.game.player.characterName,
             playerAge: state.game.player.age,

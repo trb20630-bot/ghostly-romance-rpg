@@ -10,6 +10,7 @@ import ChatInterface from "@/components/ChatInterface";
 import ExportView from "@/components/ExportView";
 import BgmPlayer from "@/components/BgmPlayer";
 import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
+import { setAuthToken, clearAuthToken, authFetch } from "@/lib/api-client";
 
 interface PlayerInfo {
   id: string;
@@ -59,11 +60,14 @@ export default function HomePage() {
   }, [player]);
 
   // Login handler — now goes to slot select
-  function handleLogin(result: { player: { id: string; name: string }; sessions: SessionInfo[] }) {
+  function handleLogin(result: { player: { id: string; name: string }; sessions: SessionInfo[]; token?: string }) {
     setPlayer(result.player);
     setSessions(result.sessions);
     setScreen("slots");
-    // Save for gallery comments
+    // Save auth token + player info
+    if (result.token) {
+      setAuthToken(result.token);
+    }
     sessionStorage.setItem("playerId", result.player.id);
     sessionStorage.setItem("playerName", result.player.name);
   }
@@ -75,9 +79,8 @@ export default function HomePage() {
     if (!player) return;
     setSyncing(true);
     try {
-      const res = await fetch("/api/auth", {
+      const res = await authFetch("/api/auth", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "load_session",
           playerId: player.id,
@@ -128,22 +131,17 @@ export default function HomePage() {
     setSessions([]);
     setActiveSession(null);
     setScreen("auth");
+    clearAuthToken();
+    sessionStorage.removeItem("playerId");
+    sessionStorage.removeItem("playerName");
   }
 
   function handleBackToSlots() {
     setActiveSession(null);
     setSavedMemory(null);
     setSavedConversations([]);
-    // Re-fetch sessions
-    if (player) {
-      void fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login", name: player.name, password: "__session_refresh__" }),
-      }).catch(() => {});
-    }
     setScreen("slots");
-    // Reload the page to refresh session list
+    // Reload to refresh session list (token persists in sessionStorage)
     window.location.reload();
   }
 
@@ -301,9 +299,8 @@ function GameRouter({
                   dispatch({ type: "SET_PLAYER", payload: { ...state.game.player!, characterName: namePromptInput.trim() } });
                   // Save to DB
                   if (state.game.sessionId) {
-                    void fetch("/api/game", {
+                    void authFetch("/api/game", {
                       method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ sessionId: state.game.sessionId, character_name: namePromptInput.trim() }),
                     });
                   }

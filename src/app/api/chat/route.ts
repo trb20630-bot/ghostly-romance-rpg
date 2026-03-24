@@ -5,6 +5,7 @@ import { logTokenUsage } from "@/lib/token-logger";
 import { validateContextBeforeAI } from "@/lib/context-guard";
 import { validateAndFixResponse } from "@/lib/validateResponse";
 import { getNpcNames } from "@/lib/prompts/characters";
+import { authenticateRequest, unauthorizedResponse } from "@/lib/auth-guard";
 import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
@@ -14,13 +15,19 @@ interface ChatRequestBody {
   gameState: GameState;
   memory: PlayerMemory | null;
   recentHistory: ChatMessage[];
-  playerId?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // JWT 驗證
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return unauthorizedResponse();
+    }
+
     const body: ChatRequestBody = await request.json();
-    const { message, gameState, memory, recentHistory, playerId } = body;
+    const { message, gameState, memory, recentHistory } = body;
+    const playerId = auth.playerId;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "訊息不能為空" }, { status: 400 });

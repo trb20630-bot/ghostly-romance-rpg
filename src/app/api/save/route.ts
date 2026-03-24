@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticateRequest, unauthorizedResponse } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -13,11 +14,16 @@ function getSupabase() {
 /**
  * POST /api/save — 儲存對話紀錄 + 更新遊戲狀態（原子性操作）
  *
- * 三步操作：conversation_logs x2 + game_sessions update
- * 如果中途失敗，回滾已插入的 conversation_logs
+ * 含 JWT 驗證 + session 歸屬驗證
  */
 export async function POST(request: NextRequest) {
   try {
+    // JWT 驗證
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return unauthorizedResponse();
+    }
+
     const body = await request.json();
     const {
       sessionId,
@@ -35,6 +41,19 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabase();
+
+    // 驗證 sessionId 屬於該玩家
+    const { data: sessionCheck } = await supabase
+      .from("game_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("player_id", auth.playerId)
+      .maybeSingle();
+
+    if (!sessionCheck) {
+      console.error(`[save] Session ownership check failed: session=${sessionId}, player=${auth.playerId}`);
+      return NextResponse.json({ error: "無效的存檔" }, { status: 403 });
+    }
 
     // 防重複：檢查此 round 是否已存在
     const { data: existing } = await supabase
