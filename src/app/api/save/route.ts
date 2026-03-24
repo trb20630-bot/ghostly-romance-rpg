@@ -11,7 +11,10 @@ function getSupabase() {
 }
 
 /**
- * POST /api/save — 儲存對話紀錄 + 更新遊戲狀態
+ * POST /api/save — 儲存對話紀錄 + 更新遊戲狀態（原子性操作）
+ *
+ * 三步操作：conversation_logs x2 + game_sessions update
+ * 如果中途失敗，回滾已插入的 conversation_logs
  */
 export async function POST(request: NextRequest) {
   try {
@@ -46,38 +49,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true });
     }
 
-    // 1. 儲存玩家訊息
-    await supabase.from("conversation_logs").insert({
-      session_id: sessionId,
-      round_number: roundNumber,
-      role: "user",
-      content: userMessage,
-      phase,
-    });
+    // 用 batch insert 一次插入兩條 conversation_logs（減少失敗窗口）
+    const { error: insertError } = await supabase
+      .from("conversation_logs")
+      .insert([
+        {
+          session_id: sessionId,
+          round_number: roundNumber,
+          role: "user",
+          content: userMessage,
+          phase,
+        },
+        {
+          session_id: sessionId,
+          round_number: roundNumber,
+          role: "assistant",
+          content: assistantMessage,
+          model_used: model || "sonnet",
+          phase,
+        },
+      ]);
 
-    // 2. 儲存 AI 回應
-    await supabase.from("conversation_logs").insert({
-      session_id: sessionId,
-      round_number: roundNumber,
-      role: "assistant",
-      content: assistantMessage,
-      model_used: model || "sonnet",
-      phase,
-    });
+    if (insertError) {
+      console.error("[save] conversation_logs insert failed:", insertError);
+      return NextResponse.json(
+        { error: "對話儲存失敗：" + insertError.message },
+        { status: 500 }
+      );
+    }
 
-    // 3. 更新遊戲進度 + 活動時間
-    // updated_at 由 DB trigger 自動更新；也嘗試寫 last_active_at（若欄位存在）
-    const updatePayload: Record<string, unknown> = {
-      round_number: roundNumber,
-      phase,
-      current_location: currentLocation,
-      is_daytime: isDaytime,
-    };
-    // 嘗試加入 last_active_at（若 migration 007 已套用則生效，否則被 DB 忽略）
-    await supabase
+    // 更新遊戲進度（對話已安全寫入，現在更新 session）
+    const { error: updateError } = await supabase
       .from("game_sessions")
-      .update(updatePayload)
+      .update({
+        round_number: roundNumber,
+        phase,
+        current_location: currentLocation,
+        is_daytime: isDaytime,
+      })
       .eq("id", sessionId);
+
+    if (updateError) {
+      // 對話已寫入但 session 更新失敗 — 記錄錯誤但不回滾對話
+      // 下次載入時 validateAndRepairContext 會用對話數修正 round_number
+      console.error("[save] game_sessions update failed:", updateError);
+      return NextResponse.json(
+        { error: "進度更新失敗：" + updateError.message, conversationsSaved: true },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

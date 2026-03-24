@@ -44,6 +44,11 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const summarizeRetryRef = useRef(0);
   const summarizePausedUntilRef = useRef(0);
 
+  // Save state
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSavingRef = useRef(false);
+
   const { game, messages, memory } = state;
 
   // Auto-scroll
@@ -53,6 +58,18 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
       behavior: "smooth",
     });
   }, [messages]);
+
+  // 關閉頁面前攔截：未存檔時提示
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSavingRef.current) {
+        e.preventDefault();
+        e.returnValue = "存檔尚未完成，確定要離開嗎？";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   // 心跳：每 30 秒更新 session 活動時間
   useEffect(() => {
@@ -153,15 +170,19 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           model: data.model,
         };
         dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
+
+        // 先存檔，成功後才 INCREMENT_ROUND
+        const nextRound = game.roundNumber + 1;
+        if (game.sessionId) {
+          const saved = await autoSave(text, rawResponse, data.model, nextRound);
+          if (!saved) {
+            // 存檔失敗但對話已顯示，標記 round 仍然推進（避免卡住）
+            console.warn(`[sendMessage] autoSave failed for round ${nextRound}, proceeding anyway`);
+          }
+        }
         dispatch({ type: "INCREMENT_ROUND" });
 
-        // 儲存用：保留原始回覆（含場景標記）
-        if (game.sessionId) {
-          autoSave(text, rawResponse, data.model, game.roundNumber + 1);
-        }
-
         // 摘要觸發：首次 5 輪，之後每 10 輪（含暫停檢查）
-        const nextRound = game.roundNumber + 1;
         const unsummarizedRounds = nextRound - memory.lastSummarizedRound;
         const isFirstSummarize = memory.lastSummarizedRound === 0;
         const threshold = isFirstSummarize ? 5 : 10;
@@ -197,26 +218,58 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     [loading, messages, game, memory, dispatch]
   );
 
-  // Auto-save conversation to Supabase
-  async function autoSave(userText: string, aiText: string, model: string, round: number) {
-    try {
-      await fetch("/api/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: game.sessionId,
-          roundNumber: round,
-          userMessage: userText,
-          assistantMessage: aiText,
-          model,
-          phase: game.phase,
-          currentLocation: game.currentLocation,
-          isDaytime: game.isDaytime,
-        }),
-      });
-    } catch {
-      // Silent fail — don't interrupt gameplay
+  // Auto-save conversation to Supabase（含重試 + 狀態指示）
+  async function autoSave(userText: string, aiText: string, model: string, round: number): Promise<boolean> {
+    isSavingRef.current = true;
+    setSaveStatus("saving");
+    if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await fetch("/api/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: game.sessionId,
+            roundNumber: round,
+            userMessage: userText,
+            assistantMessage: aiText,
+            model,
+            phase: game.phase,
+            currentLocation: game.currentLocation,
+            isDaytime: game.isDaytime,
+          }),
+        });
+
+        if (res.ok) {
+          isSavingRef.current = false;
+          setSaveStatus("saved");
+          saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
+          console.log(`[autoSave] Round ${round} saved successfully`);
+          return true;
+        }
+
+        const errText = await res.text().catch(() => "unknown");
+        console.error(`[autoSave] API error (attempt ${attempt}/${MAX_RETRIES}): ${res.status} ${errText}`);
+      } catch (err) {
+        console.error(`[autoSave] Network error (attempt ${attempt}/${MAX_RETRIES}):`, err instanceof Error ? err.message : err);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        setSaveStatus("error");
+        // 短暫等待再重試
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+        setSaveStatus("saving");
+      }
     }
+
+    // 全部重試失敗
+    isSavingRef.current = false;
+    setSaveStatus("error");
+    saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 5000);
+    console.error(`[autoSave] Round ${round} failed after ${MAX_RETRIES} attempts`);
+    return false;
   }
 
   // Auto-start death phase
@@ -404,6 +457,9 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               </h1>
               <p className="text-[10px] sm:text-xs text-ghost-white/50 truncate">
                 {PHASE_LABELS[game.phase]} · {game.currentLocation} · 第{game.roundNumber}輪
+                {saveStatus === "saving" && <span className="ml-1 text-gold/60 animate-pulse"> 儲存中...</span>}
+                {saveStatus === "saved" && <span className="ml-1 text-jade"> ✓ 已儲存</span>}
+                {saveStatus === "error" && <span className="ml-1 text-red-400"> 儲存失敗</span>}
               </p>
             </div>
           </div>

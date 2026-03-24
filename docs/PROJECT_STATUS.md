@@ -34,6 +34,25 @@
   - 超過 10 條時合併最舊 3 條為 1 條，而非直接刪除
   - SUMMARY_PROMPT 摘要字數從 50 字放寬到 100 字
 
+### 時間回溯（問題 2）
+
+- [x] P0：autoSave fire-and-forget → await + 重試 + 狀態指示
+  - autoSave 改為 await，存檔完成後才 INCREMENT_ROUND
+  - 失敗自動重試 3 次（間隔遞增 1s/2s/3s）
+  - Header 顯示存檔狀態：儲存中.../已儲存 ✓/儲存失敗
+  - beforeunload 攔截：未存檔完成時提示使用者
+
+- [x] P1：三步存檔改為原子操作
+  - conversation_logs 兩條 INSERT 合併為 batch insert
+  - 插入失敗直接回傳錯誤，不會留下不完整的資料
+  - game_sessions 更新失敗時對話已安全寫入，載入時 context-guard 會修正
+
+- [x] P1：載入時驗證 round_number vs 對話記錄
+  - context-guard 新增 round_number 驗證邏輯
+  - 以 conversation_logs 的最大 round_number 為準
+  - 不一致時自動修正 game_sessions.round_number 並記錄錯誤
+  - auth/route.ts 回傳修正後的 round_number 給前端
+
 ---
 
 ## 🔄 進行中
@@ -44,17 +63,15 @@
 
 ## ⏳ 待處理
 
-### 問題 2：時間回溯
-- 玩家關掉再開會有時間回溯的問題
-- 尚未診斷
-
 ### 問題 3：沒有 ABCD 選項
 - AI 回應經常沒有給玩家選項
-- 尚未診斷
+- 已在 core.ts 加入選項規則、validateResponse.ts 強化驗證（初步修復）
+- 需要實際測試確認效果
 
 ### 問題 4：選項重複
 - 有了 ABCD 選項卻常常是同樣的答案
-- 尚未診斷
+- 已在 core.ts 加入反泛用選項規則（初步修復）
+- 需要實際測試確認效果
 
 ### 問題 5：資料隔離
 - 需確認 AI 回答內容是否鎖定在該玩家的遊玩內容內
@@ -67,15 +84,18 @@
 | 功能 | 檔案 |
 |------|------|
 | 摘要觸發邏輯 | `app/src/components/ChatInterface.tsx:163-180` |
-| triggerSummarize | `app/src/components/ChatInterface.tsx:233-372` |
+| triggerSummarize | `app/src/components/ChatInterface.tsx` |
+| autoSave（含重試） | `app/src/components/ChatInterface.tsx` |
 | 記憶注入 prompt | `app/src/lib/prompts/index.ts:106-142` |
 | extractFacts API | `app/src/app/api/summarize/route.ts` |
 | JSON 截斷修復 | `app/src/app/api/summarize/route.ts:19-50` |
+| 存檔 API（原子操作） | `app/src/app/api/save/route.ts` |
 | Haiku 設定 | `app/src/lib/claude.ts` |
 | System Prompt 核心 | `app/src/lib/prompts/core.ts` |
 | 遊戲狀態管理 | `app/src/lib/game-store.ts` |
-| Context Guard | `app/src/lib/context-guard.ts` |
-| 存檔載入 | `app/src/app/api/auth/route.ts` |
+| Context Guard（含 round 驗證） | `app/src/lib/context-guard.ts` |
+| 存檔載入（含修正） | `app/src/app/api/auth/route.ts` |
+| 單元測試 | `app/src/__tests__/memory-system.test.ts` |
 
 ---
 
@@ -83,10 +103,13 @@
 
 1. **摘要觸發門檻**：首次 5 輪，之後每 10 輪
 2. **摘要保留數量**：10 條，每條 150 字，超過時合併最舊 3 條
-3. **重試機制**：失敗 3 次後暫停 5 輪
-4. **Timeout**：30 秒
+3. **摘要重試機制**：失敗 3 次後暫停 5 輪
+4. **摘要 Timeout**：30 秒
 5. **extractFacts maxTokens**：1000（從 500 提高）
-6. **retry state 用 useRef**：不觸發 re-render，避免不必要的效能開銷
+6. **autoSave**：await 模式，重試 3 次，間隔遞增
+7. **存檔原子性**：batch insert conversation_logs，失敗不寫入
+8. **round_number 驗證**：載入時以 conversation_logs 為 source of truth
+9. **beforeunload 攔截**：存檔進行中時提示使用者
 
 ---
 

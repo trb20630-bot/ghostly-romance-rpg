@@ -124,8 +124,14 @@ export async function POST(request: NextRequest) {
         console.warn(`[load_session] ${sessionId} 發現問題:`, validation.issues);
       }
 
+      // 如果 round_number 被修正，用修正後的值
+      const effectiveRound = validation.repairedRoundNumber ?? session.round_number;
+      const effectiveSession = validation.repairedRoundNumber !== null
+        ? { ...session, round_number: effectiveRound }
+        : session;
+
       return NextResponse.json({
-        session,
+        session: effectiveSession,
         memory: validation.memory ? {
           key_facts: validation.memory.key_facts,
           story_summaries: validation.memory.story_summaries,
@@ -134,7 +140,7 @@ export async function POST(request: NextRequest) {
         conversations: validation.conversations,
         contextIssues: validation.issues.length > 0 ? validation.issues : undefined,
         needsSummary: validation.memory
-          ? (session.round_number - validation.memory.last_summarized_round > 15)
+          ? (effectiveRound - validation.memory.last_summarized_round > 15)
           : false,
       });
     }

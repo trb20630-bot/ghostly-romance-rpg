@@ -16,7 +16,7 @@ function getSupabase() {
 /**
  * 嘗試修復被截斷的 JSON（補上缺少的括號）
  */
-function tryRepairJson(raw: string): Record<string, unknown> | null {
+export function tryRepairJson(raw: string): Record<string, unknown> | null {
   // 計算未閉合的括號
   let braces = 0;
   let brackets = 0;

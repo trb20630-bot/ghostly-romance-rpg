@@ -29,6 +29,7 @@ interface ValidationResult {
     story_summaries: string[];
     last_summarized_round: number;
   } | null;
+  repairedRoundNumber: number | null;
 }
 
 // ===== 錯誤記錄 =====
@@ -165,10 +166,43 @@ export async function validateAndRepairContext(
     repaired = true;
   }
 
-  // 3. 檢查摘要是否過期
-  const totalRounds = logs.length > 0
+  // 3. 驗證 round_number 與對話記錄是否一致
+  const actualRoundFromLogs = logs.length > 0
     ? Math.max(...logs.map((l) => l.round_number))
     : 0;
+
+  let repairedRoundNumber: number | null = null;
+
+  // 讀取 game_sessions.round_number
+  const { data: sessionData } = await supabase
+    .from("game_sessions")
+    .select("round_number")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  const sessionRound = sessionData?.round_number ?? 0;
+
+  if (sessionRound !== actualRoundFromLogs && actualRoundFromLogs > 0) {
+    issues.push(
+      `輪數不一致：game_sessions=${sessionRound}，conversation_logs 最大=${actualRoundFromLogs}`
+    );
+    void logError(playerId, sessionId, "round_mismatch", {
+      session_round: sessionRound,
+      actual_round: actualRoundFromLogs,
+    });
+
+    // 以對話記錄為準，修正 game_sessions.round_number
+    await supabase
+      .from("game_sessions")
+      .update({ round_number: actualRoundFromLogs })
+      .eq("id", sessionId);
+
+    repairedRoundNumber = actualRoundFromLogs;
+    repaired = true;
+  }
+
+  // 4. 檢查摘要是否過期
+  const totalRounds = actualRoundFromLogs;
   const lastSummarized = (memory.last_summarized_round as number) || 0;
 
   if (totalRounds - lastSummarized > 15) {
@@ -178,7 +212,6 @@ export async function validateAndRepairContext(
       last_summarized: lastSummarized,
       gap: totalRounds - lastSummarized,
     });
-    // 標記需要強制摘要（由前端觸發，避免在此阻斷）
   }
 
   return {
@@ -191,6 +224,7 @@ export async function validateAndRepairContext(
       story_summaries: (memory.story_summaries as string[]) || [],
       last_summarized_round: (memory.last_summarized_round as number) || 0,
     } : null,
+    repairedRoundNumber,
   };
 }
 

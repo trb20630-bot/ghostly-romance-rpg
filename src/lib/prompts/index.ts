@@ -103,7 +103,7 @@ export function assemblePrompt(
  * key_facts：逗號分隔不換行
  * story_summaries：最多 10 條，每條限 150 字，超過時合併最舊的
  */
-function buildMemoryContext(memory: PlayerMemory): string {
+export function buildMemoryContext(memory: PlayerMemory): string {
   const parts: string[] = ["## 記憶"];
 
   // 關鍵事實（逗號分隔，一行內）
