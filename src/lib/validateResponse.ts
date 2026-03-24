@@ -235,23 +235,105 @@ export function hasPlayerChoices(response: string): boolean {
 }
 
 /**
+ * 從回應中提取 A/B/C 選項的文字內容
+ */
+export function extractChoiceTexts(response: string): { a: string; b: string; c: string } | null {
+  const matchA = response.match(/[A][.、）)]\s*(.{2,})/m);
+  const matchB = response.match(/[B][.、）)]\s*(.{2,})/m);
+  const matchC = response.match(/[C][.、）)]\s*(.{2,})/m);
+
+  if (!matchA || !matchB || !matchC) return null;
+
+  return {
+    a: matchA[1].trim(),
+    b: matchB[1].trim(),
+    c: matchC[1].trim(),
+  };
+}
+
+/**
+ * 計算兩個中文字串的相似度
+ * 策略：提取動詞+名詞核心詞（2字詞），比較 Jaccard 重疊
+ */
+export function choiceSimilarity(a: string, b: string): number {
+  // 去除停用字和標點
+  const stopwords = /[，。、！？的了是在有不也就都而且或與及一個來去到把被讓給從]/g;
+  const cleanA = a.replace(stopwords, "");
+  const cleanB = b.replace(stopwords, "");
+
+  if (cleanA.length === 0 && cleanB.length === 0) return 1;
+  if (cleanA.length === 0 || cleanB.length === 0) return 0;
+
+  // 提取所有 2-gram 作為「詞」的近似
+  const extractWords = (s: string): string[] => {
+    const words: string[] = [];
+    for (let i = 0; i < s.length - 1; i++) {
+      words.push(s.slice(i, i + 2));
+    }
+    return words;
+  };
+
+  const wordsA = extractWords(cleanA);
+  const wordsB = extractWords(cleanB);
+
+  if (wordsA.length === 0 && wordsB.length === 0) return 1;
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+
+  // 計算重疊的 2-gram 數量（允許多次匹配）
+  const setB = new Set(wordsB);
+  const matchCount = wordsA.filter((w) => setB.has(w)).length;
+
+  // 用較短的那方做分母（Overlap coefficient — 對短句更公平）
+  const minLen = Math.min(wordsA.length, wordsB.length);
+  return minLen > 0 ? matchCount / minLen : 0;
+}
+
+/**
+ * 檢查選項是否重複/語意過於相似
+ */
+export function hasDuplicateChoices(response: string): boolean {
+  const choices = extractChoiceTexts(response);
+  if (!choices) return false;
+
+  const THRESHOLD = 0.5;
+  if (choiceSimilarity(choices.a, choices.b) > THRESHOLD) return true;
+  if (choiceSimilarity(choices.a, choices.c) > THRESHOLD) return true;
+  if (choiceSimilarity(choices.b, choices.c) > THRESHOLD) return true;
+
+  return false;
+}
+
+/**
  * 檢查選項是否為被禁止的泛用選項
  */
 function hasGenericChoices(response: string): boolean {
   const bannedPatterns = [
+    // 原有禁止清單
     /探索四周環境/,
     /仔細觀察眼前的狀況/,
     /保持警戒，靜待變化/,
     /探索寺廟庭院/,
     /找一間廂房休息/,
     /留意周圍的動靜/,
+    // 擴充：不提及具體對象的觀察/探索/等待類
+    /觀察周圍/,
+    /觀察四周/,
+    /查看環境/,
+    /環顧四周/,
+    /靜觀其變/,
+    /靜待時機/,
+    /繼續觀察/,
+    /繼續等待/,
+    /先觀望/,
+    /四處看看/,
+    /查探四周/,
   ];
   let matchCount = 0;
   for (const pattern of bannedPatterns) {
     if (pattern.test(response)) matchCount++;
   }
-  // 如果命中 2 個以上泛用選項，視為泛用
-  return matchCount >= 2;
+  // 命中 1 個以上泛用選項就視為泛用（從 2 降到 1，更嚴格）
+  return matchCount >= 1;
 }
 
 /**
@@ -361,14 +443,22 @@ export function validateAndFixResponse(
     return cleaned.trimEnd().replace(/[.。…]+$/, "") + choices;
   }
 
-  // 已有完整選項且非泛用 → 直接通過
-  if (hasPlayerChoices(response) && !hasGenericChoices(response)) {
-    return response;
-  }
+  // 已有完整選項 → 檢查品質
+  if (hasPlayerChoices(response)) {
+    const isGeneric = hasGenericChoices(response);
+    const isDuplicate = hasDuplicateChoices(response);
 
-  // 選項是泛用的 → 清除舊選項，根據敘事重新生成
-  if (hasPlayerChoices(response) && hasGenericChoices(response)) {
-    console.warn("[validateResponse] 偵測到泛用選項，根據敘事重新生成...");
+    if (!isGeneric && !isDuplicate) {
+      return response; // 選項完整、不泛用、不重複 → 通過
+    }
+
+    // 品質不合格 → 清除舊選項，根據敘事重新生成
+    if (isGeneric) {
+      console.warn("[validateResponse] 偵測到泛用選項，根據敘事重新生成...");
+    }
+    if (isDuplicate) {
+      console.warn("[validateResponse] 偵測到重複/相似選項，根據敘事重新生成...");
+    }
     const narrative = extractNarrativeFromResponse(response);
     const choices = generateContextualChoices(
       narrative,
