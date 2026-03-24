@@ -141,10 +141,10 @@ describe("P1：session 歸屬驗證邏輯", () => {
   });
 
   it("無 Authorization header 時回傳 null", () => {
-    const header: string | null = null;
-    const hasBearer = header?.startsWith("Bearer ");
+    const header = null as string | null;
+    const hasBearer = header ? header.startsWith("Bearer ") : false;
 
-    expect(hasBearer).toBeFalsy();
+    expect(hasBearer).toBe(false);
   });
 });
 

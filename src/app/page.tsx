@@ -10,7 +10,8 @@ import ChatInterface from "@/components/ChatInterface";
 import ExportView from "@/components/ExportView";
 import BgmPlayer from "@/components/BgmPlayer";
 import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
-import { setAuthToken, clearAuthToken, authFetch } from "@/lib/api-client";
+import { setAuthToken, clearAuthToken, authFetch, getAuthToken } from "@/lib/api-client";
+import { cleanSceneTag } from "@/lib/scene-bgm";
 
 interface PlayerInfo {
   id: string;
@@ -261,7 +262,7 @@ function GameRouter({
             payload: {
               id: crypto.randomUUID(),
               role: conv.role as "user" | "assistant",
-              content: conv.content,
+              content: conv.role === "assistant" ? cleanSceneTag(conv.content) : conv.content,
               timestamp: Date.now(),
             },
           });

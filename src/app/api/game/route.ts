@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticateRequest, unauthorizedResponse } from "@/lib/auth-guard";
+import { authenticateOrFallback, unauthorizedResponse } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -16,15 +16,14 @@ function getSupabaseAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    // JWT 驗證
-    const auth = await authenticateRequest(request);
-    if (!auth) {
+    const body = await request.json();
+    const { slotNumber, characterName, playerAge, playerGender, playerOccupation, chosenCharacter, playerId: bodyPlayerId } = body;
+
+    // JWT 驗證（向後相容）
+    const playerId = await authenticateOrFallback(request, bodyPlayerId);
+    if (!playerId) {
       return unauthorizedResponse();
     }
-
-    const body = await request.json();
-    const { slotNumber, characterName, playerAge, playerGender, playerOccupation, chosenCharacter } = body;
-    const playerId = auth.playerId;
 
     const supabase = getSupabaseAdmin();
 
@@ -87,14 +86,14 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    // JWT 驗證
-    const auth = await authenticateRequest(request);
-    if (!auth) {
+    const body = await request.json();
+    const { sessionId, playerId: bodyPlayerId, ...updates } = body;
+
+    // JWT 驗證（向後相容）
+    const playerId = await authenticateOrFallback(request, bodyPlayerId);
+    if (!playerId) {
       return unauthorizedResponse();
     }
-
-    const body = await request.json();
-    const { sessionId, ...updates } = body;
 
     if (!sessionId) {
       return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
@@ -107,7 +106,7 @@ export async function PATCH(request: NextRequest) {
       .from("game_sessions")
       .update(updates)
       .eq("id", sessionId)
-      .eq("player_id", auth.playerId)
+      .eq("player_id", playerId)
       .select()
       .single();
 

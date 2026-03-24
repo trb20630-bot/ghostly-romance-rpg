@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { summarizeWithHaiku, extractFactsWithHaiku } from "@/lib/claude";
 import { SUMMARY_PROMPT, EXTRACT_FACTS_PROMPT } from "@/lib/prompts";
 import { logTokenUsage } from "@/lib/token-logger";
-import { authenticateRequest, unauthorizedResponse } from "@/lib/auth-guard";
+import { authenticateOrFallback, unauthorizedResponse } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -55,15 +55,14 @@ export function tryRepairJson(raw: string): Record<string, unknown> | null {
  */
 export async function POST(request: NextRequest) {
   try {
-    // JWT 驗證
-    const auth = await authenticateRequest(request);
-    if (!auth) {
+    const body = await request.json();
+    const { conversations, startRound, endRound, sessionId, playerId: bodyPlayerId } = body;
+
+    // JWT 驗證（向後相容）
+    const playerId = await authenticateOrFallback(request, bodyPlayerId);
+    if (!playerId) {
       return unauthorizedResponse();
     }
-
-    const body = await request.json();
-    const { conversations, startRound, endRound, sessionId } = body;
-    const playerId = auth.playerId;
 
     if (!conversations || conversations.length === 0) {
       return NextResponse.json({ error: "缺少對話內容" }, { status: 400 });
