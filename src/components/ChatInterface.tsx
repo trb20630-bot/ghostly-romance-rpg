@@ -170,12 +170,14 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
         };
         dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
 
-        // 先存檔，成功後才 INCREMENT_ROUND
+        // 立刻解鎖輸入框 — 存檔和摘要在背景完成
+        setLoading(false);
+
+        // 存檔 → INCREMENT_ROUND → 摘要（不阻塞 UI）
         const nextRound = game.roundNumber + 1;
         if (game.sessionId) {
           const saved = await autoSave(text, rawResponse, data.model, nextRound);
           if (!saved) {
-            // 存檔失敗但對話已顯示，標記 round 仍然推進（避免卡住）
             console.warn(`[sendMessage] autoSave failed for round ${nextRound}, proceeding anyway`);
           }
         }
@@ -201,6 +203,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           }
         }
       } catch (err) {
+        setLoading(false);
         dispatch({
           type: "ADD_MESSAGE",
           payload: {
@@ -210,8 +213,6 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             timestamp: Date.now(),
           },
         });
-      } finally {
-        setLoading(false);
       }
     },
     [loading, messages, game, memory, dispatch]

@@ -74,6 +74,18 @@
 
 ---
 
+### Bug 修復
+
+- [x] Bug 1：AI 文字變慢
+  - 原因：autoSave await 阻塞 setLoading(false)，輸入框被鎖 250-500ms
+  - 修復：setLoading(false) 提前到 ADD_MESSAGE 之後，存檔在背景完成
+
+- [x] Bug 2：手機音樂不能調大小聲
+  - 原因：控制面板 w-52 固定寬度溢出手機螢幕右側，音量滑桿被裁切
+  - 修復：手機用 `w-[calc(100vw-2rem)]`，桌面用 `sm:w-52`，加 `max-w-[13rem]`
+
+---
+
 ## 🔄 進行中
 
 （目前無）

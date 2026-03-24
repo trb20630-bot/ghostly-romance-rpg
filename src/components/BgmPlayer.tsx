@@ -266,7 +266,7 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
       </button>
 
       {showControls && (
-        <div className="absolute top-10 right-0 glass-panel rounded-xl p-3 w-52 space-y-3 animate-fade-in">
+        <div className="absolute top-10 right-0 glass-panel rounded-xl p-3 w-[calc(100vw-2rem)] sm:w-52 max-w-[13rem] space-y-3 animate-fade-in">
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-ghost-white/40 w-6">音量</span>
             <input
