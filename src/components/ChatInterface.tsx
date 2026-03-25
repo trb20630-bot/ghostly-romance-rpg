@@ -1194,14 +1194,9 @@ function MessageBubble({ message, fontSizeClass = "text-base" }: { message: Chat
         {isUser && (
           <div className="text-[10px] text-ghost-white/50 mb-1.5 tracking-wider">— 你 —</div>
         )}
-        <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap ${
-          isUser ? "text-ghost-white/95" : "text-ghost-white"
-        }`}>
-          {message.content}
-        </div>
-        {/* TTS button for AI messages */}
+        {/* TTS button for AI messages — top-right corner */}
         {!isUser && (
-          <div className="flex items-center justify-between mt-3">
+          <div className="flex items-center justify-between mb-2">
             <button
               onClick={handleTts}
               className={`text-[11px] px-2 py-1 rounded-md transition-all ${
@@ -1220,6 +1215,11 @@ function MessageBubble({ message, fontSizeClass = "text-base" }: { message: Chat
             )}
           </div>
         )}
+        <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap ${
+          isUser ? "text-ghost-white/95" : "text-ghost-white"
+        }`}>
+          {message.content}
+        </div>
       </div>
     </div>
   );
