@@ -63,14 +63,27 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const [fontSize, setFontSize] = useState<FontSizeKey>("medium");
   const [showFontMenu, setShowFontMenu] = useState(false);
 
+  // Input mode state (persisted to localStorage)
+  const [inputMode, setInputMode] = useState<"dialogue" | "command">("command");
+  const [hasSelectedMode, setHasSelectedMode] = useState(false);
+  const [showModeModal, setShowModeModal] = useState(false);
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+
   useEffect(() => {
     const saved = localStorage.getItem("fontSize");
     if (saved && saved in FONT_SIZES) setFontSize(saved as FontSizeKey);
+    const savedMode = localStorage.getItem("inputMode");
+    if (savedMode === "dialogue" || savedMode === "command") setInputMode(savedMode);
+    if (localStorage.getItem("hasSelectedInputMode")) setHasSelectedMode(true);
   }, []);
 
   useEffect(() => {
     localStorage.setItem("fontSize", fontSize);
   }, [fontSize]);
+
+  useEffect(() => {
+    localStorage.setItem("inputMode", inputMode);
+  }, [inputMode]);
 
   const { game, messages, memory } = state;
 
@@ -509,8 +522,22 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
+
+    // 首次送出時，若未選擇過模式，顯示彈窗
+    if (!hasSelectedMode) {
+      setShowModeModal(true);
+      return;
+    }
+
     setInput("");
-    sendMessage(text);
+
+    // 對話模式：加前綴讓 AI 知道玩家在跟角色說話
+    if (inputMode === "dialogue") {
+      const processedMessage = `[玩家對話] 玩家對場景中的角色說：「${text}」\n請描述角色的反應和後續劇情。`;
+      sendMessage(processedMessage);
+    } else {
+      sendMessage(text);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -519,6 +546,14 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
       handleSubmit(e);
     }
   }
+
+  // 點擊其他地方關閉模式下拉選單
+  useEffect(() => {
+    if (!showModeDropdown) return;
+    const handler = () => setShowModeDropdown(false);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [showModeDropdown]);
 
   return (
     <div className="h-[100dvh] flex flex-col items-center">
@@ -712,11 +747,55 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           className="glass-panel rounded-xl p-2 sm:p-3"
         >
           <div className="flex items-end gap-2">
+            {/* Mode toggle */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModeDropdown(!showModeDropdown)}
+                className="btn-ancient rounded-lg px-2.5 py-2.5 text-[11px] sm:text-xs tracking-wider whitespace-nowrap flex items-center gap-1"
+                title={inputMode === "dialogue" ? "對話模式：對角色說話" : "指令模式：描述行動"}
+              >
+                <span>{inputMode === "dialogue" ? "對話" : "指令"}</span>
+                <span className="text-[9px] opacity-50">▼</span>
+              </button>
+              {showModeDropdown && (
+                <div className="absolute bottom-full left-0 mb-1 glass-panel rounded-lg overflow-hidden animate-fade-in z-50 min-w-[140px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputMode("dialogue");
+                      setHasSelectedMode(true);
+                      localStorage.setItem("hasSelectedInputMode", "true");
+                      setShowModeDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs tracking-wider transition-all ${
+                      inputMode === "dialogue" ? "text-gold bg-gold/10" : "text-ghost-white/60 hover:text-gold/80 hover:bg-gold/5"
+                    }`}
+                  >
+                    對話 <span className="text-[10px] opacity-50">— 對角色說話</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputMode("command");
+                      setHasSelectedMode(true);
+                      localStorage.setItem("hasSelectedInputMode", "true");
+                      setShowModeDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs tracking-wider transition-all ${
+                      inputMode === "command" ? "text-gold bg-gold/10" : "text-ghost-white/60 hover:text-gold/80 hover:bg-gold/5"
+                    }`}
+                  >
+                    指令 <span className="text-[10px] opacity-50">— 描述行動</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="輸入你的行動⋯⋯"
+              placeholder={inputMode === "dialogue" ? "對角色說⋯⋯" : "輸入你的行動⋯⋯"}
               rows={1}
               disabled={loading}
               className="flex-1 input-ancient rounded-lg px-3 sm:px-4 py-2.5 text-[15px] resize-none disabled:opacity-40"
@@ -731,6 +810,47 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           </div>
         </form>
       </div>
+
+      {/* Input Mode Selection Modal */}
+      {showModeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night/80 backdrop-blur-sm">
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-6 sm:p-8 w-full max-w-sm animate-fade-in-up space-y-5">
+            <h2 className="text-xl text-gold font-bold tracking-widest text-center">選擇輸入模式</h2>
+            <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+            <p className="text-xs text-ghost-white/50 text-center leading-relaxed">
+              你可以隨時在輸入框左側切換模式
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setInputMode("dialogue");
+                setHasSelectedMode(true);
+                localStorage.setItem("hasSelectedInputMode", "true");
+                setShowModeModal(false);
+              }}
+              className="w-full glass-panel rounded-xl p-4 text-left transition-all hover:border-gold/30 border border-transparent group"
+            >
+              <div className="text-sm text-gold font-bold tracking-wider group-hover:text-gold/90">對話模式</div>
+              <p className="text-xs text-ghost-white/50 mt-1 leading-relaxed">對故事中的角色說話，AI 會描述角色的反應</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setInputMode("command");
+                setHasSelectedMode(true);
+                localStorage.setItem("hasSelectedInputMode", "true");
+                setShowModeModal(false);
+              }}
+              className="w-full glass-panel rounded-xl p-4 text-left transition-all hover:border-gold/30 border border-transparent group"
+            >
+              <div className="text-sm text-gold font-bold tracking-wider group-hover:text-gold/90">指令模式</div>
+              <p className="text-xs text-ghost-white/50 mt-1 leading-relaxed">描述你想做的行動，直接告訴 AI 劇情走向</p>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Share Modal */}
       {showShareModal && (
