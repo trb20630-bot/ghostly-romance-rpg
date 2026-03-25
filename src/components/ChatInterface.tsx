@@ -739,11 +739,22 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             </div>
           )}
 
-          {messages.map((msg, index) => (
-            <div key={msg.id} id={`message-${index}`}>
-              <MessageBubble message={msg} fontSizeClass={FONT_SIZES[fontSize].message} />
-            </div>
-          ))}
+          {messages.map((msg, index) => {
+            const isLatestAssistant = msg.role === "assistant" && index === messages.length - 1;
+            return (
+              <div key={msg.id} id={`message-${index}`}>
+                <MessageBubble
+                  message={msg}
+                  fontSizeClass={FONT_SIZES[fontSize].message}
+                  isLatest={isLatestAssistant}
+                  onChoiceClick={isLatestAssistant && !loading ? (text: string) => {
+                    setInput("");
+                    sendMessage(text);
+                  } : undefined}
+                />
+              </div>
+            );
+          })}
 
           {loading && (
             <div className="flex items-center justify-center gap-3 py-4 animate-fade-in">
@@ -1078,8 +1089,49 @@ async function fetchTtsChunk(text: string): Promise<Blob | null> {
   }
 }
 
+/* ===== Parse AI choices from response ===== */
+function parseChoices(content: string): { mainContent: string; choices: Array<{ label: string; text: string }> } {
+  // Match 【你的選擇】 block or standalone A./B./C./D. options at the end
+  const headerPattern = /\n*[-—]{0,3}\s*\n*【[^】]*選擇[^】]*】\s*\n?/;
+  const headerMatch = content.match(headerPattern);
+
+  let choiceSection: string;
+  let mainContent: string;
+
+  if (headerMatch && headerMatch.index !== undefined) {
+    mainContent = content.slice(0, headerMatch.index).trimEnd();
+    choiceSection = content.slice(headerMatch.index + headerMatch[0].length);
+  } else {
+    // No header — try to find trailing A./B./C. lines
+    const lines = content.split("\n");
+    const firstOptionIdx = lines.findIndex((l) => /^[A-D][.、）)]\s*.{2,}/.test(l.trim()));
+    if (firstOptionIdx === -1) {
+      return { mainContent: content, choices: [] };
+    }
+    mainContent = lines.slice(0, firstOptionIdx).join("\n").trimEnd();
+    choiceSection = lines.slice(firstOptionIdx).join("\n");
+  }
+
+  const choices: Array<{ label: string; text: string }> = [];
+  const optionPattern = /([A-D])[.、）)]\s*(.+)/g;
+  let match;
+  while ((match = optionPattern.exec(choiceSection)) !== null) {
+    const text = match[2].trim();
+    // Skip D if it's the "or type your own" prompt
+    if (match[1] === "D" && /輸入|自[己由]/.test(text)) continue;
+    choices.push({ label: match[1], text });
+  }
+
+  return { mainContent, choices };
+}
+
 /* ===== Message Bubble with TTS ===== */
-function MessageBubble({ message, fontSizeClass = "text-base" }: { message: ChatMessage; fontSizeClass?: string }) {
+function MessageBubble({ message, fontSizeClass = "text-base", isLatest = false, onChoiceClick }: {
+  message: ChatMessage;
+  fontSizeClass?: string;
+  isLatest?: boolean;
+  onChoiceClick?: (text: string) => void;
+}) {
   const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing" | "paused">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
@@ -1215,11 +1267,43 @@ function MessageBubble({ message, fontSizeClass = "text-base" }: { message: Chat
             )}
           </div>
         )}
-        <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap ${
-          isUser ? "text-ghost-white/95" : "text-ghost-white"
-        }`}>
-          {message.content}
-        </div>
+        {isUser ? (
+          <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap text-ghost-white/95`}>
+            {message.content}
+          </div>
+        ) : (
+          (() => {
+            const { mainContent, choices } = parseChoices(message.content);
+            return (
+              <>
+                <div className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap text-ghost-white`}>
+                  {mainContent}
+                </div>
+                {choices.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {choices.map((choice) => (
+                      isLatest && onChoiceClick ? (
+                        <button
+                          key={choice.label}
+                          onClick={() => onChoiceClick(choice.text)}
+                          className="w-full text-left px-3.5 py-3 rounded-xl border border-gold/20 bg-gold/5 hover:bg-gold/15 hover:border-gold/40 active:bg-gold/25 transition-all min-h-[44px]"
+                        >
+                          <span className="text-gold font-bold mr-1.5">{choice.label}.</span>
+                          <span className={`${fontSizeClass} text-ghost-white/90`}>{choice.text}</span>
+                        </button>
+                      ) : (
+                        <div key={choice.label} className="px-3.5 py-2 rounded-xl border border-ghost-white/5 bg-ghost-white/[0.02]">
+                          <span className="text-gold/40 font-bold mr-1.5">{choice.label}.</span>
+                          <span className={`${fontSizeClass} text-ghost-white/40`}>{choice.text}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()
+        )}
       </div>
     </div>
   );
