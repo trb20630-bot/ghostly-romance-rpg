@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     let ssml: string;
 
     if (mode === "smart") {
-      // Smart mode: preserve 「」 for voice detection, then parse segments
+      // Smart mode: preserve 「」 and 【】 for voice detection, then parse segments
       const cleaned = cleanForTts(text.slice(0, 10000), true);
       const segments = parseSegments(cleaned);
       ssml = buildMultiVoiceSsml(segments);
@@ -120,11 +120,60 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Parse text into voice segments:
- * - Text inside 「」with character context → character voice
- * - Text outside 「」 → narrator voice
+ * Parse text into voice segments.
+ * Priority: 【角色名】「台詞」 markers (new format) → fallback to 「」 heuristic (old format)
  */
 function parseSegments(text: string): TtsSegment[] {
+  // Check if text uses 【角色名】 markers
+  if (/【[^】]+】/.test(text)) {
+    return parseMarkedSegments(text);
+  }
+  // Fallback: old 「」 heuristic for saves without markers
+  return parseLegacySegments(text);
+}
+
+/**
+ * New format: 【角色名】「台詞」 — reliable character voice mapping
+ */
+function parseMarkedSegments(text: string): TtsSegment[] {
+  const segments: TtsSegment[] = [];
+  // Split on 【角色名】 markers, capturing the character name
+  const parts = text.split(/(【[^】]+】)/g);
+
+  let currentSpeaker = "";
+
+  for (const part of parts) {
+    if (!part.trim()) continue;
+
+    const markerMatch = part.match(/^【([^】]+)】$/);
+    if (markerMatch) {
+      // This is a character marker — set speaker for next segment
+      currentSpeaker = markerMatch[1].trim();
+      continue;
+    }
+
+    if (currentSpeaker) {
+      // Text after a character marker → character voice
+      // Strip 「」 quotes if present for cleaner TTS
+      const cleaned = part.replace(/^「/, "").replace(/」$/, "").trim();
+      if (cleaned) {
+        segments.push({ voice: getVoiceForSpeaker(currentSpeaker), text: cleaned });
+      }
+      currentSpeaker = "";
+    } else {
+      // No marker before this text → narration
+      // But check for inline 「」 with nearby character names (mixed format)
+      segments.push({ voice: VOICE_MAP.narrator, text: part });
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * Legacy format: detect speaker from context around 「」 quotes
+ */
+function parseLegacySegments(text: string): TtsSegment[] {
   const segments: TtsSegment[] = [];
   const parts = text.split(/(「[^」]*」)/g);
 
