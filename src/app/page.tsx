@@ -137,13 +137,24 @@ export default function HomePage() {
     sessionStorage.removeItem("playerName");
   }
 
-  function handleBackToSlots() {
+  async function handleBackToSlots() {
     setActiveSession(null);
     setSavedMemory(null);
     setSavedConversations([]);
     setScreen("slots");
-    // Reload to refresh session list (token persists in sessionStorage)
-    window.location.reload();
+    // Refresh session list via API (no page reload — preserves login + audio context)
+    try {
+      const res = await authFetch("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "verify" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data.sessions || []);
+      }
+    } catch {
+      // Silent fail — user still sees the (possibly stale) session list
+    }
   }
 
   // Splash screen — user clicks to enter, which unlocks audio
