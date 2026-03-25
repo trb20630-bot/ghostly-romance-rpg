@@ -25,6 +25,7 @@ export type GameAction =
   | { type: "ADD_MESSAGE"; payload: ChatMessage }
   | { type: "UPDATE_MEMORY"; payload: Partial<PlayerMemory> }
   | { type: "CLEAR_MESSAGES" }
+  | { type: "POP_LAST_MESSAGE" }
   | { type: "LOAD_STATE"; payload: Partial<FullGameState> }
   | { type: "RESET" };
 
@@ -154,6 +155,9 @@ export function gameReducer(
 
     case "CLEAR_MESSAGES":
       return { ...state, messages: [] };
+
+    case "POP_LAST_MESSAGE":
+      return { ...state, messages: state.messages.slice(0, -1) };
 
     case "LOAD_STATE":
       return { ...state, ...action.payload };

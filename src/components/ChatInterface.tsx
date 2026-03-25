@@ -377,6 +377,22 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.phase, game.player]);
 
+  // 載入存檔後偵測孤立 user 訊息（AI 未回覆），自動重新請求
+  const orphanRetryRef = useRef(false);
+  useEffect(() => {
+    if (orphanRetryRef.current) return;
+    if (messages.length === 0 || loading) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "user") {
+      orphanRetryRef.current = true;
+      const orphanText = lastMsg.content;
+      console.log("[orphanRetry] 偵測到孤立 user 訊息，自動重新請求 AI 回覆:", orphanText.slice(0, 50));
+      dispatch({ type: "POP_LAST_MESSAGE" });
+      sendMessage(orphanText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
+
   async function triggerSummarize() {
     const attempt = summarizeRetryRef.current + 1;
 
