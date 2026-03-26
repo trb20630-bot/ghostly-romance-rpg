@@ -1371,7 +1371,7 @@ function MessageBubble({ message, fontSizeClass = "text-base", isLatest = false,
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-ink-spread`}>
-      <div className={`relative max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 sm:px-5 py-3.5 sm:py-4 ${
+      <div className={`relative max-w-[95%] sm:max-w-[80%] rounded-2xl px-4 sm:px-5 py-3.5 sm:py-4 ${
         isUser ? "msg-user" : "msg-assistant"
       }`}>
         {isUser && (
