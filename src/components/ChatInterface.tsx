@@ -89,21 +89,30 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
   // Auto-scroll：AI 回覆完成後滾動到該訊息的第一行
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === "assistant") {
+    if (messages.length === 0) return;
+
+    const lastMessage = messages[messages.length - 1];
+
+    if (lastMessage.role === "assistant") {
+      // 延遲等待 DOM 更新完成，再滾動到 AI 訊息頂部
+      setTimeout(() => {
+        const container = scrollRef.current;
         const messageElement = document.getElementById(`message-${messages.length - 1}`);
-        if (messageElement) {
-          messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-          return;
+        if (container && messageElement) {
+          // 使用 container.scrollTo 而非 scrollIntoView，避免巢狀滾動容器的異常行為
+          container.scrollTo({
+            top: messageElement.offsetTop,
+            behavior: "smooth",
+          });
         }
-      }
+      }, 100);
+    } else {
+      // 非 assistant 訊息（user 輸入）仍滾動到底部
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
-    // 非 assistant 訊息（user 輸入）仍滾動到底部
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
   }, [messages]);
 
   // 關閉頁面前攔截：有未存檔變更或正在存檔時提示
