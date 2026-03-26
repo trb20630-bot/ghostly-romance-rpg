@@ -62,6 +62,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   // Font size state (persisted to localStorage)
   const [fontSize, setFontSize] = useState<FontSizeKey>("medium");
   const [showFontMenu, setShowFontMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Input mode state (persisted to localStorage)
   const [inputMode, setInputMode] = useState<"dialogue" | "command">("command");
@@ -595,6 +596,18 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     return () => document.removeEventListener("click", handler);
   }, [showModeDropdown]);
 
+  // 點擊外部關閉更多選單
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-more-menu]")) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [showMoreMenu]);
+
   return (
     <div className="h-[100dvh] flex flex-col items-center">
       {/* Header Bar */}
@@ -617,8 +630,10 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Read All button */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* === 主要按鈕（手機+桌面都顯示）=== */}
+
+            {/* 朗讀按鈕 */}
             {messages.filter((m) => m.role === "assistant").length > 0 && (
               <button
                 onClick={async () => {
@@ -659,20 +674,22 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   dispatch({ type: "SET_TTS_PLAYING", payload: false });
                   readAllAudioRef.current = null;
                 }}
-                className={`rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap transition-all ${
+                className={`rounded-lg px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap transition-all ${
                   readingAll ? "btn-ancient text-gold border-gold/50" : "text-ghost-white/30 hover:text-gold/60 border border-transparent hover:border-gold/20"
                 }`}
                 title={readingAll ? "停止朗讀" : "朗讀全部"}
               >
-                {readingAll ? "⏹ 停止" : "🔊 朗讀"}
+                {readingAll ? "⏹" : "🔊"}<span className="hidden sm:inline"> {readingAll ? "停止" : "朗讀"}</span>
               </button>
             )}
+
+            {/* Aa 字體 + 💾 存檔（手機+桌面） */}
             {game.roundNumber >= 1 && (
               <>
                 <div className="relative">
                   <button
                     onClick={() => setShowFontMenu(!showFontMenu)}
-                    className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                    className="btn-ancient rounded-lg px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
                     title="字體大小"
                   >
                     Aa
@@ -696,11 +713,17 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 <button
                   onClick={handleManualSave}
                   disabled={isSavingRef.current}
-                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap disabled:opacity-40"
+                  className="btn-ancient rounded-lg px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap disabled:opacity-40"
                   title="手動存檔"
                 >
-                  💾 存檔
+                  💾<span className="hidden sm:inline"> 存檔</span>
                 </button>
+              </>
+            )}
+
+            {/* === 桌面版：剩餘按鈕全部顯示 === */}
+            {game.roundNumber >= 1 && (
+              <div className="hidden sm:flex items-center gap-2">
                 <button
                   onClick={async () => {
                     if (game.sessionId && hasUnsavedRef.current) {
@@ -708,7 +731,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                     }
                     dispatch({ type: "SET_PHASE", payload: "export" });
                   }}
-                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                  className="btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
                 >
                   匯出故事
                 </button>
@@ -722,15 +745,15 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                     setShareResult(null);
                     setShowShareModal(true);
                   }}
-                  className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                  className="btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
                 >
                   分享作品
                 </button>
-              </>
+              </div>
             )}
             <button
               onClick={() => { setMusicFeedbackResult(null); setMusicFeedbackText(""); setShowMusicFeedback(true); }}
-              className="text-ghost-white/20 hover:text-gold/60 transition-colors text-sm"
+              className="hidden sm:block text-ghost-white/20 hover:text-gold/60 transition-colors text-sm"
               title="音樂不對？點我回報"
             >
               🎵
@@ -738,11 +761,75 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             {onBackToSlots && (
               <button
                 onClick={handleSaveAndBack}
-                className="btn-ancient rounded-lg px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                className="hidden sm:block btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
               >
                 返回角色列表
               </button>
             )}
+
+            {/* === 手機版：更多選單 === */}
+            <div className="relative sm:hidden" data-more-menu>
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="rounded-lg px-2 py-1.5 text-[10px] tracking-wider text-ghost-white/50 hover:text-gold/60 border border-ghost-white/10 hover:border-gold/20 transition-all"
+              >
+                ⋯
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full mt-1 glass-panel rounded-lg shadow-xl z-50 min-w-[140px] animate-fade-in overflow-hidden">
+                  {game.roundNumber >= 1 && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          setShowMoreMenu(false);
+                          if (game.sessionId && hasUnsavedRef.current) {
+                            await handleManualSave();
+                          }
+                          dispatch({ type: "SET_PHASE", payload: "export" });
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                      >
+                        匯出故事
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setShowMoreMenu(false);
+                          if (game.sessionId && hasUnsavedRef.current) {
+                            await handleManualSave();
+                          }
+                          const charName = game.player?.characterName || game.player?.character || "";
+                          setShareTitle(`那些關於我轉生成為${charName}的那件事`);
+                          setShareResult(null);
+                          setShowShareModal(true);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                      >
+                        分享作品
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setMusicFeedbackResult(null);
+                      setMusicFeedbackText("");
+                      setShowMusicFeedback(true);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                  >
+                    音樂回報
+                  </button>
+                  {onBackToSlots && (
+                    <button
+                      onClick={() => { setShowMoreMenu(false); handleSaveAndBack(); }}
+                      className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors border-t border-ghost-white/5"
+                    >
+                      返回角色列表
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
