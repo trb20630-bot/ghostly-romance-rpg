@@ -611,7 +611,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   return (
     <div className="h-[100dvh] flex flex-col items-center">
       {/* Header Bar */}
-      <header className="w-full max-w-3xl shrink-0 px-3 sm:px-6 pt-3 sm:pt-4">
+      <header className="w-full max-w-3xl shrink-0 px-3 sm:px-6 pt-3 sm:pt-4 relative z-20">
         <div className="glass-panel rounded-xl px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-full border border-gold/30 flex items-center justify-center text-sm text-gold shrink-0">
@@ -776,7 +776,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 ⋯
               </button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full mt-1 glass-panel rounded-lg shadow-xl z-50 min-w-[140px] animate-fade-in overflow-hidden">
+                <div className="absolute right-0 top-full mt-1 glass-panel rounded-lg shadow-xl z-[100] min-w-[140px] animate-fade-in overflow-hidden">
                   {game.roundNumber >= 1 && (
                     <>
                       <button
