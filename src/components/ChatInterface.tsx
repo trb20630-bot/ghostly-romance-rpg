@@ -187,6 +187,11 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           throw new Error("AI 回覆為空，請重新嘗試");
         }
 
+        // 處理日夜變化（來自 chat route 的偵測結果）
+        if (data.isDaytime !== undefined && data.isDaytime !== game.isDaytime) {
+          dispatch({ type: "SET_DAYTIME", payload: data.isDaytime });
+        }
+
         // 提取場景標記 → 切換 BGM
         // 優先用 AI 的 <!-- SCENE: XXX --> 標記，沒有時從內容推斷
         let sceneTag = extractSceneTag(rawResponse);
@@ -513,6 +518,16 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           }),
         },
       });
+
+      // 處理日夜變化（來自 Haiku 事實提取的 time_change）
+      if (data.facts?.time_change) {
+        const tc = String(data.facts.time_change);
+        if (/天亮|日出|晨光|破曉|清晨|白天/.test(tc)) {
+          dispatch({ type: "SET_DAYTIME", payload: true });
+        } else if (/入夜|天黑|夜幕|黃昏|日落|夜晚/.test(tc)) {
+          dispatch({ type: "SET_DAYTIME", payload: false });
+        }
+      }
 
       summarizeRetryRef.current = 0;
       console.log(

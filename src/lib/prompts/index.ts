@@ -82,6 +82,17 @@ export function assemblePrompt(
     }
   }
 
+  // 注入時間狀態（讓 AI 知道當前是白天或夜晚）
+  systemPrompt += `\n\n## 當前時間狀態
+現在是：${gameState.isDaytime ? "白天（陽光普照）" : "夜晚（月黑風高）"}
+已進行回合數：${gameState.roundNumber}
+
+⚠️ 時間軸規則（嚴格遵守）：
+1. 故事時間必須連貫，不能跳躍或倒退
+2. 如果你提到「明天」「後天」等時間，後續劇情必須遵守
+3. 當劇情需要時間推進時（天亮/入夜），請在回覆中明確描述
+4. 聶小倩是鬼，白天不能見陽光，必須附著在物品中`;
+
   // 注入記憶上下文（壓縮格式）
   if (memory) {
     systemPrompt += "\n\n" + buildMemoryContext(memory);

@@ -10,6 +10,19 @@ import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
 
+/**
+ * 從 AI 回覆中偵測日夜變化關鍵詞
+ * 回傳 true = 天亮, false = 入夜, undefined = 無變化
+ */
+function detectTimeChange(text: string, currentIsDaytime: boolean): boolean | undefined {
+  const dayKeywords = /天亮|日出|晨光|破曉|清晨|旭日|朝陽|天色漸明|曙光/;
+  const nightKeywords = /入夜|天黑|夜幕|黃昏|日落|暮色|月色|夜深|天色漸暗|夜色/;
+
+  if (currentIsDaytime && nightKeywords.test(text)) return false;
+  if (!currentIsDaytime && dayKeywords.test(text)) return true;
+  return undefined;
+}
+
 interface ChatRequestBody {
   message: string;
   gameState: GameState;
@@ -88,6 +101,9 @@ export async function POST(request: NextRequest) {
       truncated: result.truncated,
     });
 
+    // 偵測日夜變化
+    const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);
+
     // Token 監控（fire-and-forget）
     void logTokenUsage({
       sessionId: gameState.sessionId,
@@ -104,6 +120,7 @@ export async function POST(request: NextRequest) {
       model,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      ...(newIsDaytime !== undefined && { isDaytime: newIsDaytime }),
     });
   } catch (error) {
     console.error("Chat API error:", error);

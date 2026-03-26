@@ -260,7 +260,7 @@ function GameRouter({
       dispatch({ type: "SET_SESSION_ID", payload: savedSession.id });
       dispatch({ type: "SET_PHASE", payload: savedSession.phase as GamePhase });
       dispatch({ type: "SET_LOCATION", payload: savedSession.current_location });
-      dispatch({ type: "SET_DAYTIME", payload: savedSession.is_daytime });
+      dispatch({ type: "SET_DAYTIME", payload: savedSession.is_daytime ?? true });
 
       for (let i = 0; i < savedSession.round_number; i++) {
         dispatch({ type: "INCREMENT_ROUND" });
