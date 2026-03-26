@@ -25,7 +25,7 @@ export async function callClaude(
   systemPrompt: string,
   messages: ClaudeMessage[],
   model: "sonnet" | "haiku" = "sonnet",
-  maxTokens: number = 3000
+  maxTokens: number = 4000
 ): Promise<{ text: string; inputTokens: number; outputTokens: number; truncated: boolean }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
