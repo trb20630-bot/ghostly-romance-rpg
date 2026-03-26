@@ -188,9 +188,15 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           throw new Error("AI 回覆為空，請重新嘗試");
         }
 
-        // 處理日夜變化（來自 chat route 的偵測結果）
+        // 處理日夜 / 地點 / 階段變化（來自 chat route 的偵測結果）
         if (data.isDaytime !== undefined && data.isDaytime !== game.isDaytime) {
           dispatch({ type: "SET_DAYTIME", payload: data.isDaytime });
+        }
+        if (data.location && data.location !== game.currentLocation) {
+          dispatch({ type: "SET_LOCATION", payload: data.location });
+        }
+        if (data.phase && data.phase !== game.phase) {
+          dispatch({ type: "SET_PHASE", payload: data.phase });
         }
 
         // 提取場景標記 → 切換 BGM
@@ -528,6 +534,19 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
           dispatch({ type: "SET_DAYTIME", payload: true });
         } else if (/入夜|天黑|夜幕|黃昏|日落|夜晚/.test(tc)) {
           dispatch({ type: "SET_DAYTIME", payload: false });
+        }
+      }
+
+      // 處理地點變化（來自 Haiku 事實提取的 location_change）
+      if (data.facts?.location_change && typeof data.facts.location_change === "string") {
+        dispatch({ type: "SET_LOCATION", payload: data.facts.location_change });
+      }
+
+      // 處理階段轉換（來自 Haiku 事實提取的 phase_transition）
+      if (data.facts?.phase_transition && typeof data.facts.phase_transition === "string") {
+        const validPhases = ["death", "reincarnation", "story", "ending"];
+        if (validPhases.includes(data.facts.phase_transition)) {
+          dispatch({ type: "SET_PHASE", payload: data.facts.phase_transition });
         }
       }
 

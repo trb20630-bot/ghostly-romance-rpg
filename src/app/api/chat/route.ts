@@ -23,6 +23,46 @@ function detectTimeChange(text: string, currentIsDaytime: boolean): boolean | un
   return undefined;
 }
 
+/** 已知遊戲地點（避免誤判）*/
+const KNOWN_LOCATIONS = ["現代", "輪迴", "金華城", "蘭若寺", "蘭若寺地下", "墓地"];
+
+/**
+ * 從 AI 回覆中偵測地點變化
+ * 回傳新地點名稱，或 null = 無變化
+ */
+function detectLocationChange(text: string, currentLocation: string): string | null {
+  // 優先：精確匹配已知地點
+  for (const loc of KNOWN_LOCATIONS) {
+    if (loc === currentLocation) continue;
+    const pattern = new RegExp(`(?:來到|踏入|進入|抵達|走進|走入|回到|到了)(?:了)?${loc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    if (pattern.test(text)) return loc;
+  }
+  return null;
+}
+
+/**
+ * 從 AI 回覆中偵測階段轉換
+ * death → reincarnation → story → ending
+ */
+function detectPhaseTransition(text: string, currentPhase: string): string | null {
+  if (currentPhase === "death") {
+    if (/輪迴|轉生|投胎|靈魂.*穿越|穿越.*古代|醒來.*發現|睜開眼.*古/.test(text)) {
+      return "reincarnation";
+    }
+  }
+  if (currentPhase === "reincarnation") {
+    if (/你就是.*[聶寧]|成為了.*[聶寧]|轉生為|以.*身分/.test(text)) {
+      return "story";
+    }
+  }
+  if (currentPhase === "story") {
+    if (/最終決戰|終局|大結局|故事.*落幕|救出.*小倩|脫離.*姥姥/.test(text)) {
+      return "ending";
+    }
+  }
+  return null;
+}
+
 interface ChatRequestBody {
   message: string;
   gameState: GameState;
@@ -101,8 +141,10 @@ export async function POST(request: NextRequest) {
       truncated: result.truncated,
     });
 
-    // 偵測日夜變化
+    // 偵測日夜 / 地點 / 階段變化
     const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);
+    const newLocation = detectLocationChange(result.text, gameState.currentLocation);
+    const newPhase = detectPhaseTransition(result.text, gameState.phase);
 
     // Token 監控（fire-and-forget）
     void logTokenUsage({
@@ -121,6 +163,8 @@ export async function POST(request: NextRequest) {
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       ...(newIsDaytime !== undefined && { isDaytime: newIsDaytime }),
+      ...(newLocation && { location: newLocation }),
+      ...(newPhase && { phase: newPhase }),
     });
   } catch (error) {
     console.error("Chat API error:", error);
