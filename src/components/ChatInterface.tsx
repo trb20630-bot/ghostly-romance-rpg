@@ -515,6 +515,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               learned_skills: [],
               visited_places: data.facts.new_places || [],
               important_items: data.facts.new_items || [],
+              completed_events: data.facts.new_events || [],
             },
           }),
         },

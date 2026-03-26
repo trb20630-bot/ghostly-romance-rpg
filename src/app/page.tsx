@@ -103,6 +103,7 @@ export default function HomePage() {
           keyFacts: (data.memory.key_facts as PlayerMemory["keyFacts"]) || {
             enemies: [], allies: [], promises: [], secrets: [],
             kills: [], learned_skills: [], visited_places: [], important_items: [],
+            completed_events: [],
           },
           storySummaries: (data.memory.story_summaries as string[]) || [],
           lastSummarizedRound: (data.memory.last_summarized_round as number) || 0,

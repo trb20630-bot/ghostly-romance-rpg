@@ -49,6 +49,7 @@ export interface KeyFacts {
   learned_skills: string[];
   visited_places: string[];
   important_items: string[];
+  completed_events: string[];
 }
 
 export interface PlayerMemory {

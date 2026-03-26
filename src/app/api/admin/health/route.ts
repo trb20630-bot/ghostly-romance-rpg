@@ -303,6 +303,7 @@ export async function POST(request: NextRequest) {
         const defaultFacts = {
           enemies: [], allies: [], promises: [], secrets: [],
           kills: [], learned_skills: [], visited_places: [], important_items: [],
+          completed_events: [],
         };
         await supabase.from("player_memory").upsert(
           {

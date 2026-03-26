@@ -31,6 +31,7 @@ function emptyKeyFacts() {
     learned_skills: [] as string[],
     visited_places: [] as string[],
     important_items: [] as string[],
+    completed_events: [] as string[],
   };
 }
 

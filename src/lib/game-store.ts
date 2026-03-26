@@ -46,6 +46,7 @@ export const initialMemory: PlayerMemory = {
     learned_skills: [],
     visited_places: [],
     important_items: [],
+    completed_events: [],
   },
   storySummaries: [],
   lastSummarizedRound: 0,

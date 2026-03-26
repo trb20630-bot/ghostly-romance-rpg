@@ -152,6 +152,7 @@ export async function validateAndRepairContext(
     const defaultFacts = {
       enemies: [], allies: [], promises: [], secrets: [],
       kills: [], learned_skills: [], visited_places: [], important_items: [],
+      completed_events: [],
     };
     await supabase.from("player_memory").upsert(
       {
@@ -259,6 +260,7 @@ export function validateContextBeforeAI(
   const defaultFacts: Record<string, string[]> = {
     enemies: [], allies: [], promises: [], secrets: [],
     kills: [], learned_skills: [], visited_places: [], important_items: [],
+    completed_events: [],
   };
   const keyFacts = memory?.keyFacts && typeof memory.keyFacts === "object"
     ? memory.keyFacts

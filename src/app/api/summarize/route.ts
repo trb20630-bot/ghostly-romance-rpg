@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
         const existingFacts = (existingMemory?.key_facts as Record<string, string[]>) || {
           enemies: [], allies: [], promises: [], secrets: [],
           kills: [], learned_skills: [], visited_places: [], important_items: [],
+          completed_events: [],
         };
         const existingSummaries = (existingMemory?.story_summaries as string[]) || [];
 
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
             new_kills: "kills",
             new_items: "important_items",
             new_places: "visited_places",
+            new_events: "completed_events",
           };
           for (const [newKey, existKey] of Object.entries(factMapping)) {
             if (facts[newKey] && Array.isArray(facts[newKey]) && facts[newKey].length > 0) {
