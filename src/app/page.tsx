@@ -12,6 +12,7 @@ import BgmPlayer from "@/components/BgmPlayer";
 import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
 import { setAuthToken, clearAuthToken, authFetch, getAuthToken } from "@/lib/api-client";
 import { cleanSceneTag } from "@/lib/scene-bgm";
+import AnnouncementModal from "@/components/AnnouncementModal";
 
 interface PlayerInfo {
   id: string;
@@ -189,6 +190,7 @@ export default function HomePage() {
     return (
       <>
         <BgmPlayer phase="login" />
+        <AnnouncementModal />
         {syncing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-night/80 backdrop-blur-sm">
             <div className="text-center animate-fade-in">
