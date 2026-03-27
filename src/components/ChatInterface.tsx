@@ -241,14 +241,21 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
         };
         dispatch({ type: "ADD_MESSAGE", payload: assistantMsg });
 
-        // 立刻解鎖輸入框 — 存檔和摘要在背景完成
-        setLoading(false);
+        // 計算最新的遊戲狀態（dispatch 排入隊列但還沒 re-render，
+        // 必須手動計算最新值傳給 autoSave，避免寫入過時狀態）
+        const latestPhase = data.phase || game.phase;
+        const latestLocation = data.location || game.currentLocation;
+        const latestIsDaytime = data.isDaytime !== undefined ? data.isDaytime : game.isDaytime;
+
         hasUnsavedRef.current = true;
 
-        // 存檔 → INCREMENT_ROUND → 摘要（不阻塞 UI）
+        // 存檔 → 解鎖輸入 → INCREMENT_ROUND → 摘要
         const nextRound = game.roundNumber + 1;
         if (game.sessionId) {
-          const saved = await autoSave(text, rawResponse, data.model, nextRound);
+          const saved = await autoSave(
+            text, rawResponse, data.model, nextRound,
+            { phase: latestPhase, currentLocation: latestLocation, isDaytime: latestIsDaytime }
+          );
           if (saved) {
             hasUnsavedRef.current = false;
             lastSavedRoundRef.current = nextRound;
@@ -256,6 +263,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             console.warn(`[sendMessage] autoSave failed for round ${nextRound}, proceeding anyway`);
           }
         }
+        setLoading(false);
         dispatch({ type: "INCREMENT_ROUND" });
 
         // 摘要觸發：首次 5 輪，之後每 10 輪（含暫停檢查）
@@ -294,7 +302,14 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   );
 
   // Auto-save conversation to Supabase（含重試 + 狀態指示）
-  async function autoSave(userText: string, aiText: string, model: string, round: number): Promise<boolean> {
+  // stateOverrides: 傳入最新的 phase/location/daytime，避免閉包中的過時值
+  async function autoSave(
+    userText: string,
+    aiText: string,
+    model: string,
+    round: number,
+    stateOverrides?: { phase: string; currentLocation: string; isDaytime: boolean }
+  ): Promise<boolean> {
     isSavingRef.current = true;
     setSaveStatus("saving");
     if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
@@ -310,9 +325,9 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             userMessage: userText,
             assistantMessage: aiText,
             model,
-            phase: game.phase,
-            currentLocation: game.currentLocation,
-            isDaytime: game.isDaytime,
+            phase: stateOverrides?.phase ?? game.phase,
+            currentLocation: stateOverrides?.currentLocation ?? game.currentLocation,
+            isDaytime: stateOverrides?.isDaytime ?? game.isDaytime,
           }),
         });
 
@@ -338,10 +353,9 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
       }
     }
 
-    // 全部重試失敗
+    // 全部重試失敗 — 保持 error 狀態，不自動消失，直到下次存檔成功
     isSavingRef.current = false;
     setSaveStatus("error");
-    saveStatusTimerRef.current = setTimeout(() => setSaveStatus("idle"), 5000);
     console.error(`[autoSave] Round ${round} failed after ${MAX_RETRIES} attempts`);
     return false;
   }
