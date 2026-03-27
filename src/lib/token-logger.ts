@@ -14,10 +14,14 @@ function getServiceClient() {
 }
 
 // Anthropic 定價（USD per token）
+// cache_read 享 90% 折扣，cache_creation 加 25% 費用
 const PRICING = {
   sonnet: { input: 3 / 1_000_000, output: 15 / 1_000_000 },
   haiku: { input: 0.8 / 1_000_000, output: 4 / 1_000_000 },
 } as const;
+
+const CACHE_WRITE_MULTIPLIER = 1.25; // cache 寫入 = 基礎價 × 1.25
+const CACHE_READ_MULTIPLIER = 0.1;   // cache 讀取 = 基礎價 × 0.1
 
 export interface TokenLogParams {
   sessionId: string | null;
@@ -25,20 +29,29 @@ export interface TokenLogParams {
   roundNumber: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   model: "sonnet" | "haiku";
   endpoint: "chat" | "summarize" | "extract_facts";
 }
 
 /**
- * 計算估算費用
+ * 計算估算費用（含 prompt caching 折扣）
  */
 export function estimateCost(
   model: "sonnet" | "haiku",
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cacheCreationInputTokens: number = 0,
+  cacheReadInputTokens: number = 0
 ): number {
   const pricing = PRICING[model];
-  return inputTokens * pricing.input + outputTokens * pricing.output;
+  return (
+    inputTokens * pricing.input +
+    outputTokens * pricing.output +
+    cacheCreationInputTokens * pricing.input * CACHE_WRITE_MULTIPLIER +
+    cacheReadInputTokens * pricing.input * CACHE_READ_MULTIPLIER
+  );
 }
 
 /**
@@ -52,7 +65,13 @@ export async function logTokenUsage(params: TokenLogParams): Promise<void> {
       return;
     }
 
-    const cost = estimateCost(params.model, params.inputTokens, params.outputTokens);
+    const cost = estimateCost(
+      params.model,
+      params.inputTokens,
+      params.outputTokens,
+      params.cacheCreationInputTokens ?? 0,
+      params.cacheReadInputTokens ?? 0
+    );
 
     const { error } = await supabase.from("token_usage").insert({
       session_id: params.sessionId || null,
@@ -60,6 +79,8 @@ export async function logTokenUsage(params: TokenLogParams): Promise<void> {
       round_number: params.roundNumber,
       input_tokens: params.inputTokens,
       output_tokens: params.outputTokens,
+      cache_creation_input_tokens: params.cacheCreationInputTokens ?? 0,
+      cache_read_input_tokens: params.cacheReadInputTokens ?? 0,
       model_used: params.model,
       endpoint: params.endpoint,
       estimated_cost: cost,

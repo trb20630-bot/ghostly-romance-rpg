@@ -1,22 +1,28 @@
 /**
  * Prompt 分層載入系統（精簡版）
  * 目標：總 context ≈ 2700 tokens
+ * 支援 Prompt Caching：靜態規則加 cache_control，動態內容不 cache
  */
 
 import { CORE_SYSTEM_PROMPT, shouldUseHaiku } from "./core";
 import { CHARACTER_PROMPTS, getNpcPrompt, type CharacterKey } from "./characters";
 import { LOCATION_PROMPTS } from "./locations";
 import { buildDeathScenePrompt, buildReincarnationPrompt } from "./death-scenes";
+import type { SystemContentBlock } from "@/lib/claude";
 import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export interface AssembledPrompt {
+  /** @deprecated 向後相容用，優先使用 systemBlocks */
   systemPrompt: string;
+  /** System prompt content blocks（支援 prompt caching） */
+  systemBlocks: SystemContentBlock[];
   model: "sonnet" | "haiku";
   messages: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
 /**
  * 組裝完整的 Prompt（含記憶上下文）
+ * 回傳 systemBlocks：靜態部分加 cache_control，動態部分不加
  */
 export function assemblePrompt(
   gameState: GameState,
@@ -26,19 +32,32 @@ export function assemblePrompt(
 ): AssembledPrompt {
   const model = shouldUseHaiku(userMessage) ? "haiku" : "sonnet";
 
-  // 核心層（永遠載入）
-  let systemPrompt = CORE_SYSTEM_PROMPT;
+  // ─── 靜態區塊：核心規則 + 角色設定（整局遊戲不變，適合 cache） ───
+  let staticPrompt = CORE_SYSTEM_PROMPT;
+
+  // 角色設定在整局遊戲中固定，歸入靜態區塊
+  if (gameState.phase === "story" || gameState.phase === "ending") {
+    if (gameState.player) {
+      const charKey = gameState.player.character as CharacterKey;
+      if (CHARACTER_PROMPTS[charKey]) {
+        staticPrompt += "\n\n" + CHARACTER_PROMPTS[charKey];
+      }
+    }
+  }
+
+  // ─── 動態區塊：每輪可能變化的內容（不 cache） ───
+  let dynamicPrompt = "";
 
   // 注入玩家角色名稱
   if (gameState.player?.characterName) {
-    systemPrompt += `\n玩家角色名：「${gameState.player.characterName}」`;
+    dynamicPrompt += `\n玩家角色名：「${gameState.player.characterName}」`;
   }
 
   // 根據遊戲階段追加 Prompt
   switch (gameState.phase) {
     case "death":
       if (gameState.player) {
-        systemPrompt +=
+        dynamicPrompt +=
           "\n\n" +
           buildDeathScenePrompt(
             gameState.player.age,
@@ -54,36 +73,32 @@ export function assemblePrompt(
 
     case "reincarnation":
       if (gameState.player) {
-        systemPrompt +=
+        dynamicPrompt +=
           "\n\n" + buildReincarnationPrompt(gameState.player.character);
       }
       break;
 
     case "story":
     case "ending": {
-      // 角色層（精簡版）
+      // NPC 只載入當前場景的（場景會變，不 cache）
       if (gameState.player) {
         const charKey = gameState.player.character as CharacterKey;
-        if (CHARACTER_PROMPTS[charKey]) {
-          systemPrompt += "\n\n" + CHARACTER_PROMPTS[charKey];
-        }
-        // NPC 只載入當前場景的
         const npcPrompt = getNpcPrompt(charKey, gameState.currentLocation);
         if (npcPrompt) {
-          systemPrompt += npcPrompt;
+          dynamicPrompt += npcPrompt;
         }
       }
-      // 場景層
+      // 場景層（場景會變，不 cache）
       const locationPrompt = LOCATION_PROMPTS[gameState.currentLocation];
       if (locationPrompt) {
-        systemPrompt += "\n\n" + locationPrompt;
+        dynamicPrompt += "\n\n" + locationPrompt;
       }
       break;
     }
   }
 
-  // 注入時間狀態（讓 AI 知道當前是白天或夜晚）
-  systemPrompt += `\n\n## 當前時間狀態
+  // 注入時間狀態（每輪變化，不 cache）
+  dynamicPrompt += `\n\n## 當前時間狀態
 現在是：${gameState.isDaytime ? "白天（陽光普照）" : "夜晚（月黑風高）"}
 已進行回合數：${gameState.roundNumber}
 
@@ -93,10 +108,30 @@ export function assemblePrompt(
 3. 當劇情需要時間推進時（天亮/入夜），請在回覆中明確描述
 4. 聶小倩是鬼，白天不能見陽光，必須附著在物品中`;
 
-  // 注入記憶上下文（壓縮格式）
+  // 注入記憶上下文（每輪變化，不 cache）
   if (memory) {
-    systemPrompt += "\n\n" + buildMemoryContext(memory);
+    dynamicPrompt += "\n\n" + buildMemoryContext(memory);
   }
+
+  // ─── 組裝 system content blocks ───
+  const systemBlocks: SystemContentBlock[] = [
+    {
+      type: "text",
+      text: staticPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
+  // 動態內容只在有內容時才加入（不加 cache_control）
+  if (dynamicPrompt.trim()) {
+    systemBlocks.push({
+      type: "text",
+      text: dynamicPrompt.trim(),
+    });
+  }
+
+  // 向後相容：合併為完整字串
+  const systemPrompt = staticPrompt + dynamicPrompt;
 
   // 組裝對話歷史（最近 10 輪）
   const messages = recentHistory
@@ -106,7 +141,7 @@ export function assemblePrompt(
       content: msg.content,
     }));
 
-  return { systemPrompt, model, messages };
+  return { systemPrompt, systemBlocks, model, messages };
 }
 
 /**

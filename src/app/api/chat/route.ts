@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now(),
     }));
 
-    const { systemPrompt, model, messages } = assemblePrompt(
+    const { systemBlocks, model, messages } = assemblePrompt(
       gameState,
       message,
       validatedMemory,
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
       messages.push({ role: "user", content: message });
     }
 
-    // 呼叫 Claude
-    const result = await callClaude(systemPrompt, messages, model);
+    // 呼叫 Claude（使用 content blocks 格式，支援 prompt caching）
+    const result = await callClaude(systemBlocks, messages, model);
 
     // 取得當前場景 NPC 名單（用於選項生成）
     const sceneNpcs = gameState.player?.character
@@ -146,13 +146,15 @@ export async function POST(request: NextRequest) {
     const newLocation = detectLocationChange(result.text, gameState.currentLocation);
     const newPhase = detectPhaseTransition(result.text, gameState.phase);
 
-    // Token 監控（fire-and-forget）
+    // Token 監控（fire-and-forget，含 cache 統計）
     void logTokenUsage({
       sessionId: gameState.sessionId,
       playerId: playerId || null,
       roundNumber: gameState.roundNumber,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
       model,
       endpoint: "chat",
     });
@@ -162,6 +164,8 @@ export async function POST(request: NextRequest) {
       model,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
       ...(newIsDaytime !== undefined && { isDaytime: newIsDaytime }),
       ...(newLocation && { location: newLocation }),
       ...(newPhase && { phase: newPhase }),
