@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const ADMIN_SECRET = "GhostStory2026";
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 const ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 分鐘
 
 function getSupabase() {

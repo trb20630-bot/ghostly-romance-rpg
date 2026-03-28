@@ -12,7 +12,8 @@ import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 export const runtime = "nodejs";
 
 // 版本標記 — 用於確認 Vercel 部署的程式碼版本
-const CHAT_API_VERSION = "2026-03-28-v6-simple-tags";
+const CHAT_API_VERSION = "2026-03-28-v7-security-fix";
+const DEBUG = process.env.NODE_ENV === "development";
 
 /**
  * 從 AI 回覆中偵測日夜變化關鍵詞
@@ -132,31 +133,19 @@ export async function POST(request: NextRequest) {
     // 呼叫 Claude（使用 content blocks 格式，支援 prompt caching）
     const result = await callClaude(systemBlocks, messages, model);
 
-    // === GAME_DATA 診斷 ===
-    console.log(`[GAME_DATA][${CHAT_API_VERSION}] Round ${gameState.roundNumber + 1}`);
-    console.log(`[GAME_DATA] AI 原始回覆前 300 字: ${JSON.stringify(result.text.slice(0, 300))}`);
-    console.log(`[GAME_DATA] AI 原始回覆後 300 字: ${JSON.stringify(result.text.slice(-300))}`);
-
-    const hasOpenTag = result.text.includes("[GAME_DATA]");
-    const hasCloseTag = result.text.includes("[/GAME_DATA]");
-    console.log(`[GAME_DATA] 含 [GAME_DATA] 開啟標記: ${hasOpenTag} | 含 [/GAME_DATA] 關閉標記: ${hasCloseTag}`);
-
     // 先解析 GAME_DATA（必須在 validateAndFixResponse 之前）
     const { cleanResponse, gameData } = parseGameData(result.text);
     result.text = cleanResponse;
 
-    if (gameData) {
-      console.log(`[GAME_DATA] 解析成功: ${JSON.stringify(gameData)}`);
-    } else if (hasOpenTag) {
-      console.log("[GAME_DATA] 有標記但無有效變動（空區塊或格式錯誤）");
-    } else {
-      console.log("[GAME_DATA] AI 未輸出 [GAME_DATA] 標記");
+    if (DEBUG) {
+      const hasTag = result.text.includes("[GAME_DATA]");
+      console.log(`[GAME_DATA][${CHAT_API_VERSION}] Round ${gameState.roundNumber + 1} | tag: ${hasTag} | parsed: ${!!gameData}`);
     }
 
     // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
     if (gameData && gameState.sessionId) {
       void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1)
-        .then((r) => console.log(`[GAME_DATA] DB 寫入: ${r.ok ? "成功" : `失敗: ${r.error}`} | session: ${gameState.sessionId}`));
+        .then((r) => { if (!r.ok) console.warn(`[GAME_DATA] DB 寫入失敗: ${r.error}`); });
     }
 
     // 取得當前場景 NPC 名單（用於選項生成）

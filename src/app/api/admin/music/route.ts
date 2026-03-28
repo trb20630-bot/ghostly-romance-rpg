@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const ADMIN_SECRET = "GhostStory2026";
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 function getSupabase() {
   return createClient(

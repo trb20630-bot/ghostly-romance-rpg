@@ -86,10 +86,7 @@ export function parseTagLines(text: string, result: ParsedGameData): void {
  * 從 AI 回覆中解析 [GAME_DATA] 區塊（簡單標記格式）
  */
 export function parseGameData(response: string): ParseResult {
-  console.log(`[PARSER] 輸入長度: ${response.length}`);
-
   const match = response.match(/\[GAME_DATA\]([\s\S]*?)\[\/GAME_DATA\]/);
-  console.log(`[PARSER] 正則匹配: ${match ? "找到" : "未找到"}`);
 
   if (!match) {
     return { cleanResponse: response, gameData: null };
@@ -107,9 +104,6 @@ export function parseGameData(response: string): ParseResult {
   };
 
   parseTagLines(content, result);
-
-
-  console.log(`[PARSER] 解析結果: ${JSON.stringify(result)}`);
 
   const hasChanges =
     result.items.add.length > 0 ||
@@ -159,8 +153,6 @@ export async function updatePlayerStats(
       return { ok: false, error: msg };
     }
 
-    console.log(`[DB_WRITE] 現有資料: ${existing ? "有" : "無"}`);
-
     // 計算新數據
     const currentSilver: number = existing?.silver ?? 0;
     const currentItems: string[] = existing?.items ?? [];
@@ -209,8 +201,6 @@ export async function updatePlayerStats(
       updated_at: new Date().toISOString(),
     };
 
-    console.log(`[DB_WRITE] 寫入 payload: ${JSON.stringify(payload)}`);
-
     let writeError;
     if (existing) {
       const { error } = await supabase
@@ -231,14 +221,12 @@ export async function updatePlayerStats(
       return { ok: false, error: msg };
     }
 
-    console.log("[DB_WRITE] 寫入成功");
-
     // 記錄歷史（fire-and-forget）
     void supabase.from("player_stats_history").insert({
       session_id: sessionId,
       round_number: roundNumber,
       game_data: gameData,
-    });
+    }).then(({ error: histErr }) => { if (histErr) console.warn("player_stats_history insert:", histErr.message); });
 
     return { ok: true };
   } catch (error) {

@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "此作品未公開" }, { status: 403 });
     }
 
-    // Increment views
+    // Increment views (fire-and-forget)
     void supabase.from("story_exports").select("views_count").eq("id", id).single().then(({ data: d }) => {
-      if (d) supabase.from("story_exports").update({ views_count: ((d as Record<string, number>).views_count || 0) + 1 }).eq("id", id);
+      if (d) void supabase.from("story_exports").update({ views_count: ((d as Record<string, number>).views_count || 0) + 1 }).eq("id", id);
     });
 
     return NextResponse.json({ chapters: data.chapters || [] });

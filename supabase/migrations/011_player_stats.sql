@@ -8,9 +8,9 @@ CREATE TABLE IF NOT EXISTS player_stats (
   session_id UUID NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
   silver INTEGER NOT NULL DEFAULT 0,
   items JSONB NOT NULL DEFAULT '[]'::jsonb,
-  subordinates JSONB NOT NULL DEFAULT '[]'::jsonb,
+  followers JSONB NOT NULL DEFAULT '[]'::jsonb,
   skills JSONB NOT NULL DEFAULT '[]'::jsonb,
-  affection JSONB NOT NULL DEFAULT '{}'::jsonb,
+  relationships JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(session_id)
 );

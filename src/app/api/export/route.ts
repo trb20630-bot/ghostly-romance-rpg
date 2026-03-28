@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { callClaude } from "@/lib/claude";
 import { logTokenUsage } from "@/lib/token-logger";
 import { createClient } from "@supabase/supabase-js";
+import { authenticateOrFallback } from "@/lib/auth-guard";
 
 export const runtime = "nodejs";
 
@@ -57,7 +58,12 @@ export async function POST(request: NextRequest) {
     return new Response("[ERROR] 無效的請求格式", { status: 400 });
   }
 
-  const { conversations, playerProfile, sessionId, playerId } = body;
+  const { conversations, playerProfile, sessionId } = body;
+
+  const playerId = await authenticateOrFallback(request, body.playerId);
+  if (!playerId) {
+    return new Response("[ERROR] 未授權，請重新登入", { status: 401 });
+  }
 
   if (!conversations || conversations.length === 0) {
     return new Response("[ERROR] 無對話紀錄", { status: 400 });
