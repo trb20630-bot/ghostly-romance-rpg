@@ -12,7 +12,7 @@ import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 export const runtime = "nodejs";
 
 // 版本標記 — 用於確認 Vercel 部署的程式碼版本
-const CHAT_API_VERSION = "2026-03-28-v5-gamedata-fix";
+const CHAT_API_VERSION = "2026-03-28-v6-simple-tags";
 
 /**
  * 從 AI 回覆中偵測日夜變化關鍵詞
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
     if (gameData) {
       console.log(`[GAME_DATA] 解析成功: ${JSON.stringify(gameData)}`);
     } else if (hasOpenTag) {
-      console.log("[GAME_DATA] 有標記但解析失敗（JSON 格式錯誤或無有效變動）");
+      console.log("[GAME_DATA] 有標記但無有效變動（空區塊或格式錯誤）");
     } else {
       console.log("[GAME_DATA] AI 未輸出 [GAME_DATA] 標記");
     }
