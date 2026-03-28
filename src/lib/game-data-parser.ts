@@ -34,6 +34,46 @@ export interface ParseResult {
 }
 
 /**
+ * 逐行解析標記格式文字，累加到 result 中
+ * 可被 parseGameData 和 backfill 共用
+ */
+export function parseTagLines(text: string, result: ParsedGameData): void {
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let m: RegExpMatchArray | null;
+
+    m = trimmed.match(/^\[\+物品\]\s*(.+)$/);
+    if (m) { result.items.add.push(m[1].trim()); continue; }
+
+    m = trimmed.match(/^\[-物品\]\s*(.+)$/);
+    if (m) { result.items.remove.push(m[1].trim()); continue; }
+
+    m = trimmed.match(/^\[\+銀兩\]\s*(\d+)/);
+    if (m) { result.silver += parseInt(m[1]); continue; }
+
+    m = trimmed.match(/^\[-銀兩\]\s*(\d+)/);
+    if (m) { result.silver -= parseInt(m[1]); continue; }
+
+    m = trimmed.match(/^\[\+好感\]\s*(\S+)\s+(\d+)/);
+    if (m) { result.relationships[m[1]] = (result.relationships[m[1]] || 0) + parseInt(m[2]); continue; }
+
+    m = trimmed.match(/^\[-好感\]\s*(\S+)\s+(\d+)/);
+    if (m) { result.relationships[m[1]] = (result.relationships[m[1]] || 0) - parseInt(m[2]); continue; }
+
+    m = trimmed.match(/^\[\+部屬\]\s*(\S+)/);
+    if (m) { result.followers.add.push(m[1]); continue; }
+
+    m = trimmed.match(/^\[-部屬\]\s*(\S+)/);
+    if (m) { result.followers.remove.push(m[1]); continue; }
+
+    m = trimmed.match(/^\[\+技能\]\s*(.+)$/);
+    if (m) { result.skills.push(m[1].trim()); continue; }
+  }
+}
+
+/**
  * 從 AI 回覆中解析 [GAME_DATA] 區塊（簡單標記格式）
  */
 export function parseGameData(response: string): ParseResult {
@@ -57,61 +97,8 @@ export function parseGameData(response: string): ParseResult {
     skills: [],
   };
 
-  const lines = content.split("\n");
+  parseTagLines(content, result);
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    let m: RegExpMatchArray | null;
-
-    // [+物品] 蠟燭
-    m = trimmed.match(/^\[\+物品\]\s*(.+)$/);
-    if (m) { result.items.add.push(m[1].trim()); continue; }
-
-    // [-物品] 火折子
-    m = trimmed.match(/^\[-物品\]\s*(.+)$/);
-    if (m) { result.items.remove.push(m[1].trim()); continue; }
-
-    // [+銀兩] 50 賣藥材
-    m = trimmed.match(/^\[\+銀兩\]\s*(\d+)/);
-    if (m) { result.silver += parseInt(m[1]); continue; }
-
-    // [-銀兩] 30 買包子
-    m = trimmed.match(/^\[-銀兩\]\s*(\d+)/);
-    if (m) { result.silver -= parseInt(m[1]); continue; }
-
-    // [+好感] 聶小倩 10 救命之恩
-    m = trimmed.match(/^\[\+好感\]\s*(\S+)\s+(\d+)/);
-    if (m) {
-      result.relationships[m[1]] = (result.relationships[m[1]] || 0) + parseInt(m[2]);
-      continue;
-    }
-
-    // [-好感] 姥姥 5 拒絕
-    m = trimmed.match(/^\[-好感\]\s*(\S+)\s+(\d+)/);
-    if (m) {
-      result.relationships[m[1]] = (result.relationships[m[1]] || 0) - parseInt(m[2]);
-      continue;
-    }
-
-    // [+部屬] 王二 被武功折服
-    m = trimmed.match(/^\[\+部屬\]\s*(\S+)/);
-    if (m) { result.followers.add.push(m[1]); continue; }
-
-    // [-部屬] 王二
-    m = trimmed.match(/^\[-部屬\]\s*(\S+)/);
-    if (m) { result.followers.remove.push(m[1]); continue; }
-
-    // [+技能] 交流電系統
-    m = trimmed.match(/^\[\+技能\]\s*(.+)$/);
-    if (m) { result.skills.push(m[1].trim()); continue; }
-
-    // 忽略無法解析的行（可能是空行或其他格式）
-    if (trimmed.startsWith("[")) {
-      console.log(`[PARSER] 無法解析: ${trimmed}`);
-    }
-  }
 
   console.log(`[PARSER] 解析結果: ${JSON.stringify(result)}`);
 

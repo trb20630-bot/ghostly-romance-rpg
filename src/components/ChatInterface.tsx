@@ -42,6 +42,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const [statsData, setStatsData] = useState<{ silver: number; items: string[]; followers: string[]; skills: string[]; relationships: Record<string, number>; exists: boolean } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
 
   // Music feedback state
   const [showMusicFeedback, setShowMusicFeedback] = useState(false);
@@ -1260,6 +1261,45 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               </div>
             )}
 
+            {/* 補齊歷史按鈕 */}
+            <button
+              disabled={backfillLoading}
+              onClick={async () => {
+                setBackfillLoading(true);
+                setTestResult("正在分析歷史對話，請稍候...");
+                try {
+                  const res = await authFetch("/api/backfill-stats", {
+                    method: "POST",
+                    body: JSON.stringify({ sessionId: game.sessionId, playerId }),
+                  });
+                  const data = await res.json();
+                  const lines = [
+                    `分析了 ${data.totalRounds} 輪對話（${data.batchesAnalyzed} 批）`,
+                    "",
+                    ...(data.batchResults || []),
+                    "",
+                    "== 最終結果 ==",
+                    `銀兩: ${data.finalStats?.silver ?? 0}`,
+                    `物品: ${(data.finalStats?.items || []).join("、") || "無"}`,
+                    `部屬: ${(data.finalStats?.followers || []).join("、") || "無"}`,
+                    `技能: ${(data.finalStats?.skills || []).join("、") || "無"}`,
+                    `好感: ${Object.entries(data.finalStats?.relationships || {}).map(([k, v]) => `${k}:${v}`).join("、") || "無"}`,
+                    "",
+                    data.success ? "✅ 已寫入 player_stats" : `❌ 寫入失敗: ${data.writeError || "unknown"}`,
+                  ];
+                  setTestResult(lines.join("\n"));
+                  if (data.success) fetchPlayerStats();
+                } catch (e) {
+                  setTestResult(`錯誤: ${e instanceof Error ? e.message : String(e)}`);
+                } finally {
+                  setBackfillLoading(false);
+                }
+              }}
+              className="w-full rounded-lg py-2 text-xs tracking-wider border border-jade/30 text-jade/70 hover:text-jade hover:border-jade/50 transition-all disabled:opacity-40"
+            >
+              {backfillLoading ? "分析中..." : "🔄 補齊歷史（分析過去對話）"}
+            </button>
+
             {/* 測試按鈕 */}
             <button
               onClick={async () => {
@@ -1271,7 +1311,6 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   });
                   const data = await res.json();
                   setTestResult(data.results?.join("\n") || JSON.stringify(data));
-                  // 重新載入狀態
                   if (data.success) fetchPlayerStats();
                 } catch (e) {
                   setTestResult(`錯誤: ${e instanceof Error ? e.message : String(e)}`);
@@ -1281,6 +1320,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
             >
               🧪 測試寫入（繞過AI直接寫DB）
             </button>
+
             {testResult && (
               <pre className="text-[10px] text-ghost-white/50 bg-night/50 rounded-lg p-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
                 {testResult}
