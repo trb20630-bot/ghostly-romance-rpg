@@ -11,6 +11,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
   const { state, dispatch } = useGame();
   const [story, setStory] = useState<StoryExport & { storyExportId?: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exportProgress, setExportProgress] = useState("");
   const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
   const [shareAnonymous, setShareAnonymous] = useState(false);
@@ -31,6 +32,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
   async function handleExport() {
     setLoading(true);
     setError("");
+    setExportProgress("準備中...");
     try {
       const conversations = messages
         .filter((m) => m.role !== "system")
@@ -53,14 +55,77 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "匯出失敗");
+        // 安全處理非 JSON 錯誤回應
+        const text = await res.text();
+        if (text.startsWith("[ERROR]")) {
+          throw new Error(text.replace("[ERROR] ", ""));
+        }
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || "匯出失敗");
+        } catch {
+          throw new Error(text.slice(0, 200) || "匯出失敗");
+        }
       }
-      setStory(await res.json());
+
+      // 讀取串流回應
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("無法讀取回應串流");
+
+      const decoder = new TextDecoder();
+      const chapters: Array<{ number: number; title: string; content: string }> = [];
+      let storyTitle = "";
+      let totalWords = 0;
+      let storyExportId: string | undefined;
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // 保留不完整的最後一行
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          if (line.startsWith("[PROGRESS] ")) {
+            setExportProgress(line.replace("[PROGRESS] ", ""));
+          } else if (line.startsWith("[CHAPTER] ")) {
+            const parts = line.replace("[CHAPTER] ", "").split("|");
+            const num = parseInt(parts[0]);
+            const title = parts[1];
+            const content = (parts.slice(2).join("|")).replace(/\\n/g, "\n");
+            chapters.push({ number: num, title, content });
+          } else if (line.startsWith("[DONE] ")) {
+            const parts = line.replace("[DONE] ", "").split("|");
+            storyTitle = parts[0];
+            totalWords = parseInt(parts[1]) || 0;
+            if (parts[3]) storyExportId = parts[3];
+          } else if (line.startsWith("[ERROR] ")) {
+            throw new Error(line.replace("[ERROR] ", ""));
+          }
+          // [CHAPTER_ERROR] — 章節已被加入為錯誤佔位，繼續處理
+        }
+      }
+
+      if (chapters.length === 0) {
+        throw new Error("匯出未產生任何章節");
+      }
+
+      setStory({
+        title: storyTitle || `那些關於我轉生成為${game.player?.character || ""}的那件事`,
+        chapters,
+        totalWords: totalWords || chapters.reduce((s, c) => s + c.content.length, 0),
+        exportedAt: new Date().toISOString(),
+        storyExportId,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "匯出失敗");
     } finally {
       setLoading(false);
+      setExportProgress("");
     }
   }
 
@@ -292,7 +357,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
               disabled={loading}
               className="w-full btn-ancient rounded-xl py-3.5 text-lg tracking-widest font-bold disabled:opacity-40 mb-4"
             >
-              {loading ? "正在編纂故事⋯⋯" : "匯 出 為 小 說"}
+              {loading ? (exportProgress || "正在編纂故事⋯⋯") : "匯 出 為 小 說"}
             </button>
             <div className="flex justify-center gap-4">
               {game.phase !== "export" && (

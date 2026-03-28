@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { callClaude } from "@/lib/claude";
 import { logTokenUsage } from "@/lib/token-logger";
 import { createClient } from "@supabase/supabase-js";
@@ -36,110 +36,147 @@ interface ExportRequestBody {
   playerId?: string;
 }
 
+/**
+ * POST /api/export
+ * 串流回傳進度 — 每完成一章就傳送進度 + 章節內容
+ *
+ * 串流格式（每行一個事件，用換行分隔）：
+ *   [PROGRESS] 1/5 正在改寫：序章：現代的終結
+ *   [CHAPTER] 1|序章：現代的終結|<小說內容>
+ *   [PROGRESS] 2/5 正在改寫：楔子：輪迴
+ *   [CHAPTER] 2|楔子：輪迴|<小說內容>
+ *   ...
+ *   [DONE] {"title":"...","totalWords":1234,"exportedAt":"..."}
+ *   [ERROR] 錯誤訊息
+ */
 export async function POST(request: NextRequest) {
+  let body: ExportRequestBody;
   try {
-    const body: ExportRequestBody = await request.json();
-    const { conversations, playerProfile, sessionId, playerId } = body;
-
-    if (!conversations || conversations.length === 0) {
-      return NextResponse.json({ error: "無對話紀錄" }, { status: 400 });
-    }
-
-    const pronoun = playerProfile.character === "聶小倩" ? "她" : "他";
-    const phases = groupByPhase(conversations);
-
-    const chapters = [];
-    const chapterNames: Record<string, string> = {
-      death: "序章：現代的終結",
-      reincarnation: "楔子：輪迴",
-      story: "",
-      ending: "終章",
-    };
-
-    let chapterNum = 0;
-
-    for (const [phase, convs] of Object.entries(phases)) {
-      if (convs.length === 0) continue;
-
-      // Smart chunking: split into chunks of ~8 messages to avoid token overflow
-      // but ensure each chunk is small enough for thorough conversion
-      const chunkSize = 8;
-      const needsChunking = convs.length > chunkSize;
-      const chunks = needsChunking
-        ? splitIntoChunks(convs, chunkSize)
-        : [convs];
-
-      for (const chunk of chunks) {
-        chapterNum++;
-        const chapterTitle = needsChunking
-          ? `第${chapterNum}章`
-          : (chapterNames[phase] || `第${chapterNum}章`);
-
-        const result = await callClaude(
-          CHAPTER_PROMPT,
-          [{
-            role: "user",
-            content: `角色：${playerProfile.character}（用「${pronoun}」稱呼）\n轉生前身份：${playerProfile.age}歲${playerProfile.occupation}\n\n請將以下對話完整改寫為小說章節「${chapterTitle}」，不可遺漏任何情節：\n\n${formatConvs(chunk)}`,
-          }],
-          "haiku",
-          4096
-        );
-
-        void logTokenUsage({
-          sessionId: sessionId || null,
-          playerId: playerId || null,
-          roundNumber: chapterNum,
-          inputTokens: result.inputTokens,
-          outputTokens: result.outputTokens,
-          model: "haiku",
-          endpoint: "chat",
-        });
-
-        chapters.push({
-          number: chapterNum,
-          title: chapterTitle,
-          content: result.text,
-        });
-      }
-    }
-
-    const characterName = playerProfile.character === "聶小倩" ? "聶小倩" : "寧采臣";
-    const title = `那些關於我轉生成為${characterName}的那件事`;
-    const totalWords = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
-
-    const story: Record<string, unknown> = { title, chapters, totalWords, exportedAt: new Date().toISOString() };
-
-    // Save to story_exports table
-    if (sessionId) {
-      try {
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
-        const { data: inserted } = await supabase.from("story_exports").insert({
-          session_id: sessionId,
-          title,
-          chapters,
-          total_words: totalWords,
-          format: "markdown",
-        }).select("id").single();
-
-        if (inserted) {
-          story.storyExportId = inserted.id;
-        }
-      } catch (e) {
-        console.warn("Failed to save story export:", e);
-      }
-    }
-
-    return NextResponse.json(story);
-  } catch (error) {
-    console.error("Export API error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "匯出失敗" },
-      { status: 500 }
-    );
+    body = await request.json();
+  } catch {
+    return new Response("[ERROR] 無效的請求格式", { status: 400 });
   }
+
+  const { conversations, playerProfile, sessionId, playerId } = body;
+
+  if (!conversations || conversations.length === 0) {
+    return new Response("[ERROR] 無對話紀錄", { status: 400 });
+  }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(line: string) {
+        controller.enqueue(encoder.encode(line + "\n"));
+      }
+
+      try {
+        const pronoun = playerProfile.character === "聶小倩" ? "她" : "他";
+        const phases = groupByPhase(conversations);
+
+        // 預先計算總章節數
+        const chunkSize = 8;
+        const allChunks: Array<{ title: string; convs: Array<{ role: string; content: string }> }> = [];
+        const chapterNames: Record<string, string> = {
+          death: "序章：現代的終結",
+          reincarnation: "楔子：輪迴",
+          story: "",
+          ending: "終章",
+        };
+
+        let chapterNum = 0;
+        for (const [phase, convs] of Object.entries(phases)) {
+          if (convs.length === 0) continue;
+          const needsChunking = convs.length > chunkSize;
+          const chunks = needsChunking ? splitIntoChunks(convs, chunkSize) : [convs];
+
+          for (const chunk of chunks) {
+            chapterNum++;
+            const title = needsChunking
+              ? `第${chapterNum}章`
+              : (chapterNames[phase] || `第${chapterNum}章`);
+            allChunks.push({ title, convs: chunk });
+          }
+        }
+
+        const totalChapters = allChunks.length;
+        const chapters: Array<{ number: number; title: string; content: string }> = [];
+
+        for (let i = 0; i < allChunks.length; i++) {
+          const { title, convs } = allChunks[i];
+          send(`[PROGRESS] ${i + 1}/${totalChapters} 正在改寫：${title}`);
+
+          try {
+            const result = await callClaude(
+              CHAPTER_PROMPT,
+              [{
+                role: "user",
+                content: `角色：${playerProfile.character}（用「${pronoun}」稱呼）\n轉生前身份：${playerProfile.age}歲${playerProfile.occupation}\n\n請將以下對話完整改寫為小說章節「${title}」，不可遺漏任何情節：\n\n${formatConvs(convs)}`,
+              }],
+              "haiku",
+              4096
+            );
+
+            chapters.push({ number: i + 1, title, content: result.text });
+            // 用 | 分隔欄位，內容中的換行用 \\n 轉義
+            send(`[CHAPTER] ${i + 1}|${title}|${result.text.replace(/\n/g, "\\n")}`);
+
+            void logTokenUsage({
+              sessionId: sessionId || null,
+              playerId: playerId || null,
+              roundNumber: i + 1,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              model: "haiku",
+              endpoint: "chat",
+            });
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : "未知錯誤";
+            send(`[CHAPTER_ERROR] ${i + 1}|${title}|${errMsg}`);
+            chapters.push({ number: i + 1, title, content: `（此章節改寫失敗：${errMsg}）` });
+          }
+        }
+
+        // 儲存到資料庫
+        const characterName = playerProfile.character === "聶小倩" ? "聶小倩" : "寧采臣";
+        const title = `那些關於我轉生成為${characterName}的那件事`;
+        const totalWords = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
+        let storyExportId: string | null = null;
+
+        if (sessionId) {
+          try {
+            const supabase = createClient(
+              process.env.NEXT_PUBLIC_SUPABASE_URL!,
+              process.env.SUPABASE_SERVICE_ROLE_KEY!
+            );
+            const { data: inserted } = await supabase.from("story_exports").insert({
+              session_id: sessionId,
+              title,
+              chapters,
+              total_words: totalWords,
+              format: "markdown",
+            }).select("id").single();
+            if (inserted) storyExportId = inserted.id;
+          } catch {
+            // 儲存失敗不影響匯出
+          }
+        }
+
+        send(`[DONE] ${title}|${totalWords}|${chapters.length}|${storyExportId || ""}`);
+      } catch (e) {
+        send(`[ERROR] ${e instanceof Error ? e.message : "匯出失敗"}`);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+    },
+  });
 }
 
 function splitIntoChunks<T>(arr: T[], size: number): T[][] {

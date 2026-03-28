@@ -417,6 +417,15 @@ function extractNarrativeFromResponse(response: string): string {
  * - 如果選項不完整（只有 A、B 沒有 C） → 清理 + 動態補上
  * - 如果選項為泛用/萬用選項 → 清除並根據敘事重新生成
  */
+/**
+ * 偵測結局/故事完結的標記
+ * 結局時 AI 不會輸出選項，這是正確的，不應強制加上
+ */
+function isStoryConclusion(response: string, phase: string): boolean {
+  if (phase !== "ending") return false;
+  return /此後無憂|從此以後|故事.*(?:結束|落幕|完結)|大結局|全劇終|幸福.*生活|永遠.*在一起|終章.*完|the\s*end/i.test(response);
+}
+
 export function validateAndFixResponse(
   response: string,
   context: {
@@ -427,6 +436,11 @@ export function validateAndFixResponse(
   }
 ): string {
   if (!response || !response.trim()) {
+    return response;
+  }
+
+  // 結局完結時不強制加選項 — 故事已結束
+  if (isStoryConclusion(response, context.phase)) {
     return response;
   }
 
