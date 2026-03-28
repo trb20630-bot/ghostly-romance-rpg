@@ -39,7 +39,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
 
   // Player stats modal state
   const [showStatsModal, setShowStatsModal] = useState(false);
-  const [statsData, setStatsData] = useState<{ silver: number; items: string[]; subordinates: string[]; skills: string[]; affection: Record<string, number>; exists: boolean } | null>(null);
+  const [statsData, setStatsData] = useState<{ silver: number; items: string[]; followers: string[]; skills: string[]; relationships: Record<string, number>; exists: boolean } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
@@ -1194,11 +1194,11 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                     <span className="text-lg">👥</span>
                     <span className="text-sm text-gold/90 tracking-wider">部屬</span>
                   </div>
-                  {statsData.subordinates.length === 0 ? (
+                  {statsData.followers.length === 0 ? (
                     <p className="text-xs text-ghost-white/30 ml-7">尚無部屬</p>
                   ) : (
                     <div className="ml-7 flex flex-wrap gap-1.5">
-                      {statsData.subordinates.map((sub, i) => (
+                      {statsData.followers.map((sub, i) => (
                         <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-jade/10 text-jade/80 border border-jade/20">
                           {sub}
                         </span>
@@ -1232,11 +1232,11 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                     <span className="text-lg">❤️</span>
                     <span className="text-sm text-gold/90 tracking-wider">好感度</span>
                   </div>
-                  {Object.keys(statsData.affection).length === 0 ? (
+                  {Object.keys(statsData.relationships).length === 0 ? (
                     <p className="text-xs text-ghost-white/30 ml-7">尚未結識任何人</p>
                   ) : (
                     <div className="ml-7 space-y-1.5">
-                      {Object.entries(statsData.affection).map(([npc, value]) => (
+                      {Object.entries(statsData.relationships).map(([npc, value]) => (
                         <div key={npc} className="flex items-center gap-2">
                           <span className="text-xs text-ghost-white/70 min-w-[4rem]">{npc}</span>
                           <div className="flex-1 h-1.5 rounded-full bg-ghost-white/10 overflow-hidden">

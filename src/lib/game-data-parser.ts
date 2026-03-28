@@ -23,8 +23,8 @@ function getServiceClient() {
 export interface ParsedGameData {
   items: { add: string[]; remove: string[] };
   silver: number;
-  affection: Record<string, number>;
-  subordinates: { add: string[]; remove: string[] };
+  relationships: Record<string, number>;
+  followers: { add: string[]; remove: string[] };
   skills: string[];
 }
 
@@ -52,8 +52,8 @@ export function parseGameData(response: string): ParseResult {
   const result: ParsedGameData = {
     items: { add: [], remove: [] },
     silver: 0,
-    affection: {},
-    subordinates: { add: [], remove: [] },
+    relationships: {},
+    followers: { add: [], remove: [] },
     skills: [],
   };
 
@@ -84,24 +84,24 @@ export function parseGameData(response: string): ParseResult {
     // [+好感] 聶小倩 10 救命之恩
     m = trimmed.match(/^\[\+好感\]\s*(\S+)\s+(\d+)/);
     if (m) {
-      result.affection[m[1]] = (result.affection[m[1]] || 0) + parseInt(m[2]);
+      result.relationships[m[1]] = (result.relationships[m[1]] || 0) + parseInt(m[2]);
       continue;
     }
 
     // [-好感] 姥姥 5 拒絕
     m = trimmed.match(/^\[-好感\]\s*(\S+)\s+(\d+)/);
     if (m) {
-      result.affection[m[1]] = (result.affection[m[1]] || 0) - parseInt(m[2]);
+      result.relationships[m[1]] = (result.relationships[m[1]] || 0) - parseInt(m[2]);
       continue;
     }
 
     // [+部屬] 王二 被武功折服
     m = trimmed.match(/^\[\+部屬\]\s*(\S+)/);
-    if (m) { result.subordinates.add.push(m[1]); continue; }
+    if (m) { result.followers.add.push(m[1]); continue; }
 
     // [-部屬] 王二
     m = trimmed.match(/^\[-部屬\]\s*(\S+)/);
-    if (m) { result.subordinates.remove.push(m[1]); continue; }
+    if (m) { result.followers.remove.push(m[1]); continue; }
 
     // [+技能] 交流電系統
     m = trimmed.match(/^\[\+技能\]\s*(.+)$/);
@@ -119,9 +119,9 @@ export function parseGameData(response: string): ParseResult {
     result.items.add.length > 0 ||
     result.items.remove.length > 0 ||
     result.silver !== 0 ||
-    Object.keys(result.affection).length > 0 ||
-    result.subordinates.add.length > 0 ||
-    result.subordinates.remove.length > 0 ||
+    Object.keys(result.relationships).length > 0 ||
+    result.followers.add.length > 0 ||
+    result.followers.remove.length > 0 ||
     result.skills.length > 0;
 
   return { cleanResponse, gameData: hasChanges ? result : null };
@@ -133,9 +133,9 @@ export function parseGameData(response: string): ParseResult {
  * DB 欄位對應：
  *   silver      INTEGER
  *   items       JSONB (string[])
- *   subordinates JSONB (string[])
+ *   followers JSONB (string[])
  *   skills      JSONB (string[])
- *   affection   JSONB (Record<string, number>)
+ *   relationships   JSONB (Record<string, number>)
  */
 export async function updatePlayerStats(
   sessionId: string,
@@ -168,9 +168,9 @@ export async function updatePlayerStats(
     // 計算新數據
     const currentSilver: number = existing?.silver ?? 0;
     const currentItems: string[] = existing?.items ?? [];
-    const currentSubordinates: string[] = existing?.subordinates ?? [];
+    const currentSubordinates: string[] = existing?.followers ?? [];
     const currentSkills: string[] = existing?.skills ?? [];
-    const currentAffection: Record<string, number> = existing?.affection ?? {};
+    const currentAffection: Record<string, number> = existing?.relationships ?? {};
 
     const newSilver = Math.max(0, currentSilver + gameData.silver);
 
@@ -184,10 +184,10 @@ export async function updatePlayerStats(
     }
 
     const newSubordinates = [...currentSubordinates];
-    for (const sub of gameData.subordinates.add) {
+    for (const sub of gameData.followers.add) {
       if (!newSubordinates.includes(sub)) newSubordinates.push(sub);
     }
-    for (const sub of gameData.subordinates.remove) {
+    for (const sub of gameData.followers.remove) {
       const idx = newSubordinates.indexOf(sub);
       if (idx !== -1) newSubordinates.splice(idx, 1);
     }
@@ -198,7 +198,7 @@ export async function updatePlayerStats(
     }
 
     const newAffection = { ...currentAffection };
-    for (const [npc, delta] of Object.entries(gameData.affection)) {
+    for (const [npc, delta] of Object.entries(gameData.relationships)) {
       newAffection[npc] = (newAffection[npc] ?? 0) + delta;
     }
 
@@ -207,9 +207,9 @@ export async function updatePlayerStats(
       session_id: sessionId,
       silver: newSilver,
       items: newItems,
-      subordinates: newSubordinates,
+      followers: newSubordinates,
       skills: newSkills,
-      affection: newAffection,
+      relationships: newAffection,
       updated_at: new Date().toISOString(),
     };
 

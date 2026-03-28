@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // 讀取玩家數據
     const { data: stats, error: statsErr } = await supabase
       .from("player_stats")
-      .select("silver, items, subordinates, skills, affection, updated_at")
+      .select("silver, items, followers, skills, relationships, updated_at")
       .eq("session_id", sessionId)
       .single();
 
@@ -63,9 +63,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         silver: 0,
         items: [],
-        subordinates: [],
+        followers: [],
         skills: [],
-        affection: {},
+        relationships: {},
         exists: false,
       });
     }
@@ -74,9 +74,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       silver: stats.silver,
       items: stats.items,
-      subordinates: stats.subordinates ?? [],
+      followers: stats.followers ?? [],
       skills: stats.skills ?? [],
-      affection: stats.affection,
+      relationships: stats.relationships,
       updatedAt: stats.updated_at,
       exists: true,
     });

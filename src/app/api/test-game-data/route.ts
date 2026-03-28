@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
           session_id: sessionId,
           silver: 100,
           items: ["raw測試劍"],
-          subordinates: [],
+          followers: [],
           skills: [],
-          affection: {},
+          relationships: {},
           updated_at: new Date().toISOString(),
         });
       if (rawError) {
@@ -103,14 +103,14 @@ export async function POST(request: NextRequest) {
     // 重新讀取驗證
     const { data: afterStats, error: afterError } = await supabase
       .from("player_stats")
-      .select("silver, items, subordinates, skills, affection")
+      .select("silver, items, followers, skills, relationships")
       .eq("session_id", sessionId)
       .maybeSingle();
 
     if (afterError) {
       results.push(`7. FAIL: 寫入後讀取失敗: ${afterError.message}`);
     } else if (afterStats) {
-      results.push(`7. OK: silver=${afterStats.silver}, items=${JSON.stringify(afterStats.items)}, affection=${JSON.stringify(afterStats.affection)}`);
+      results.push(`7. OK: silver=${afterStats.silver}, items=${JSON.stringify(afterStats.items)}, relationships=${JSON.stringify(afterStats.relationships)}`);
     } else {
       results.push("7. FAIL: 寫入後讀取不到資料");
     }
