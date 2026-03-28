@@ -131,12 +131,26 @@ export async function POST(request: NextRequest) {
 
     // 先解析 GAME_DATA（必須在 validateAndFixResponse 之前，
     // 否則選項驗證修復時會把 GAME_DATA 一起清掉）
+    const hasGameDataTag = /\[GAME_DATA\]/.test(result.text);
+    console.log(
+      `[GAME_DATA] Round ${gameState.roundNumber + 1} | ` +
+      `AI 回覆含 [GAME_DATA] 標記: ${hasGameDataTag} | ` +
+      `AI 回覆尾段: ${JSON.stringify(result.text.slice(-200))}`
+    );
+
     const { cleanResponse, gameData } = parseGameData(result.text);
     result.text = cleanResponse;
 
+    console.log(
+      `[GAME_DATA] 解析結果: ${gameData ? JSON.stringify(gameData) : "null（無數據或解析失敗）"}`
+    );
+
     // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
     if (gameData && gameState.sessionId) {
-      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1);
+      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1)
+        .then((ok) => console.log(`[GAME_DATA] DB 寫入結果: ${ok ? "成功" : "失敗"}`));
+    } else if (!gameData) {
+      console.log("[GAME_DATA] 跳過 DB 寫入（gameData 為 null）");
     }
 
     // 取得當前場景 NPC 名單（用於選項生成）
