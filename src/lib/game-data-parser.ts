@@ -39,36 +39,45 @@ export interface ParseResult {
  */
 export function parseTagLines(text: string, result: ParsedGameData): void {
   for (const line of text.split("\n")) {
-    const trimmed = line.trim();
+    // 去除前導符號（-, *, 數字.）和空白
+    const trimmed = line.replace(/^[\s\-\*\d.·•]+/, "").trim();
     if (!trimmed) continue;
 
     let m: RegExpMatchArray | null;
 
-    m = trimmed.match(/^\[\+物品\]\s*(.+)$/);
+    // 支援半形 [] 和全形 ［］【】
+    // 統一替換為半形再匹配
+    const normalized = trimmed
+      .replace(/[［【]/g, "[")
+      .replace(/[］】]/g, "]")
+      .replace(/[＋]/g, "+")
+      .replace(/[－]/g, "-");
+
+    m = normalized.match(/^\[\+物品\]\s*(.+)$/);
     if (m) { result.items.add.push(m[1].trim()); continue; }
 
-    m = trimmed.match(/^\[-物品\]\s*(.+)$/);
+    m = normalized.match(/^\[-物品\]\s*(.+)$/);
     if (m) { result.items.remove.push(m[1].trim()); continue; }
 
-    m = trimmed.match(/^\[\+銀兩\]\s*(\d+)/);
+    m = normalized.match(/^\[\+銀兩\]\s*(\d+)/);
     if (m) { result.silver += parseInt(m[1]); continue; }
 
-    m = trimmed.match(/^\[-銀兩\]\s*(\d+)/);
+    m = normalized.match(/^\[-銀兩\]\s*(\d+)/);
     if (m) { result.silver -= parseInt(m[1]); continue; }
 
-    m = trimmed.match(/^\[\+好感\]\s*(\S+)\s+(\d+)/);
+    m = normalized.match(/^\[\+好感\]\s*(\S+)\s+(\d+)/);
     if (m) { result.relationships[m[1]] = (result.relationships[m[1]] || 0) + parseInt(m[2]); continue; }
 
-    m = trimmed.match(/^\[-好感\]\s*(\S+)\s+(\d+)/);
+    m = normalized.match(/^\[-好感\]\s*(\S+)\s+(\d+)/);
     if (m) { result.relationships[m[1]] = (result.relationships[m[1]] || 0) - parseInt(m[2]); continue; }
 
-    m = trimmed.match(/^\[\+部屬\]\s*(\S+)/);
+    m = normalized.match(/^\[\+部屬\]\s*(\S+)/);
     if (m) { result.followers.add.push(m[1]); continue; }
 
-    m = trimmed.match(/^\[-部屬\]\s*(\S+)/);
+    m = normalized.match(/^\[-部屬\]\s*(\S+)/);
     if (m) { result.followers.remove.push(m[1]); continue; }
 
-    m = trimmed.match(/^\[\+技能\]\s*(.+)$/);
+    m = normalized.match(/^\[\+技能\]\s*(.+)$/);
     if (m) { result.skills.push(m[1].trim()); continue; }
   }
 }

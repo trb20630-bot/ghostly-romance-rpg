@@ -122,11 +122,17 @@ export async function POST(request: NextRequest) {
 
         const reply = result.text.trim();
         if (reply !== "無變化") {
+          const before = JSON.stringify(accumulated);
           parseTagLines(reply, accumulated);
+          const after = JSON.stringify(accumulated);
+          const changed = before !== after;
+          batchResults.push(`輪 ${batch.rounds}: ${changed ? "有解析到變化" : "Haiku有回覆但正則未匹配"}`);
+          batchResults.push(`  Haiku原始回覆: ${reply.slice(0, 300)}`);
+        } else {
+          batchResults.push(`輪 ${batch.rounds}: 無變化`);
         }
 
         analyzedRounds += BATCH_SIZE;
-        batchResults.push(`輪 ${batch.rounds}: ${reply.split("\n").filter((l) => l.trim()).length} 個變化`);
       } catch (e) {
         batchResults.push(`輪 ${batch.rounds}: 分析失敗 (${e instanceof Error ? e.message : "unknown"})`);
       }
