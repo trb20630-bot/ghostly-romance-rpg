@@ -4,7 +4,7 @@
  * 支援 Prompt Caching：靜態規則加 cache_control，動態內容不 cache
  */
 
-import { CORE_SYSTEM_PROMPT, shouldUseHaiku } from "./core";
+import { CORE_SYSTEM_PROMPT, GAME_DATA_PROMPT, shouldUseHaiku } from "./core";
 import { CHARACTER_PROMPTS, getNpcPrompt, type CharacterKey } from "./characters";
 import { LOCATION_PROMPTS } from "./locations";
 import { buildDeathScenePrompt, buildReincarnationPrompt } from "./death-scenes";
@@ -35,14 +35,18 @@ export function assemblePrompt(
   // ─── 靜態區塊：核心規則 + 角色設定（整局遊戲不變，適合 cache） ───
   let staticPrompt = CORE_SYSTEM_PROMPT;
 
+  const isStoryPhase = gameState.phase === "story" || gameState.phase === "ending";
+
   // 角色設定在整局遊戲中固定，歸入靜態區塊
-  if (gameState.phase === "story" || gameState.phase === "ending") {
+  if (isStoryPhase) {
     if (gameState.player) {
       const charKey = gameState.player.character as CharacterKey;
       if (CHARACTER_PROMPTS[charKey]) {
         staticPrompt += "\n\n" + CHARACTER_PROMPTS[charKey];
       }
     }
+    // GAME_DATA 規則只在 story/ending 載入（death/reincarnation 不需要追蹤物品）
+    staticPrompt += "\n\n" + GAME_DATA_PROMPT;
   }
 
   // ─── 動態區塊：每輪可能變化的內容（不 cache） ───
@@ -113,10 +117,12 @@ export function assemblePrompt(
     dynamicPrompt += "\n\n" + buildMemoryContext(memory);
   }
 
-  // GAME_DATA 提醒（放在動態區塊最末尾，離 messages 最近，確保 AI 注意到）
-  dynamicPrompt += `\n\n⚠️ 回覆末尾必須輸出 [GAME_DATA] 區塊（第 4 步）。即使沒有數據變化也要輸出空區塊：
+  // GAME_DATA 提醒（只在 story/ending 階段，放在最末尾確保 AI 注意到）
+  if (isStoryPhase) {
+    dynamicPrompt += `\n\n⚠️ 回覆末尾必須輸出 [GAME_DATA] 區塊（第 4 步）。即使沒有數據變化也要輸出空區塊：
 [GAME_DATA]
 [/GAME_DATA]`;
+  }
 
   // ─── 組裝 system content blocks ───
   const systemBlocks: SystemContentBlock[] = [
