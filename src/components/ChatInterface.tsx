@@ -1153,9 +1153,12 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
       {/* Player Stats Modal */}
       {showStatsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night/80 backdrop-blur-sm">
-          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-6 sm:p-8 w-full max-w-sm animate-fade-in-up space-y-4">
-            <h2 className="text-xl text-gold font-bold tracking-widest text-center">玩家狀態</h2>
-            <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl w-full max-w-sm max-h-[80vh] flex flex-col animate-fade-in-up">
+            <div className="shrink-0 p-6 pb-2 sm:px-8 sm:pt-8 space-y-2">
+              <h2 className="text-xl text-gold font-bold tracking-widest text-center">玩家狀態</h2>
+              <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 space-y-4 min-h-0">
 
             {statsLoading ? (
               <p className="text-center text-ghost-white/50 text-sm animate-pulse">載入中⋯</p>
@@ -1327,12 +1330,15 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               </pre>
             )}
 
-            <button
-              onClick={() => { setShowStatsModal(false); setTestResult(null); }}
-              className="w-full btn-ancient rounded-lg py-2.5 text-sm tracking-wider mt-2"
-            >
-              關閉
-            </button>
+            </div>{/* end scrollable area */}
+            <div className="shrink-0 p-6 pt-3 sm:px-8 sm:pb-8">
+              <button
+                onClick={() => { setShowStatsModal(false); setTestResult(null); }}
+                className="w-full btn-ancient rounded-lg py-2.5 text-sm tracking-wider"
+              >
+                關閉
+              </button>
+            </div>
           </div>
         </div>
       )}
