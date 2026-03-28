@@ -41,6 +41,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [statsData, setStatsData] = useState<{ silver: number; items: string[]; subordinates: string[]; skills: string[]; affection: Record<string, number>; exists: boolean } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   // Music feedback state
   const [showMusicFeedback, setShowMusicFeedback] = useState(false);
@@ -1259,8 +1260,35 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               </div>
             )}
 
+            {/* 測試按鈕 */}
             <button
-              onClick={() => setShowStatsModal(false)}
+              onClick={async () => {
+                setTestResult("測試中...");
+                try {
+                  const res = await authFetch("/api/test-game-data", {
+                    method: "POST",
+                    body: JSON.stringify({ sessionId: game.sessionId }),
+                  });
+                  const data = await res.json();
+                  setTestResult(data.results?.join("\n") || JSON.stringify(data));
+                  // 重新載入狀態
+                  if (data.success) fetchPlayerStats();
+                } catch (e) {
+                  setTestResult(`錯誤: ${e instanceof Error ? e.message : String(e)}`);
+                }
+              }}
+              className="w-full rounded-lg py-2 text-xs tracking-wider border border-gold/20 text-gold/60 hover:text-gold hover:border-gold/40 transition-all"
+            >
+              🧪 測試寫入（繞過AI直接寫DB）
+            </button>
+            {testResult && (
+              <pre className="text-[10px] text-ghost-white/50 bg-night/50 rounded-lg p-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
+                {testResult}
+              </pre>
+            )}
+
+            <button
+              onClick={() => { setShowStatsModal(false); setTestResult(null); }}
               className="w-full btn-ancient rounded-lg py-2.5 text-sm tracking-wider mt-2"
             >
               關閉

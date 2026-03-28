@@ -1,0 +1,105 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { updatePlayerStats } from "@/lib/game-data-parser";
+
+export const runtime = "nodejs";
+
+function getServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+/**
+ * POST /api/test-game-data
+ * 繞過 AI，直接測試 GAME_DATA 寫入 + 讀取流程
+ */
+export async function POST(request: NextRequest) {
+  const results: string[] = [];
+  try {
+    const { sessionId } = await request.json();
+    results.push(`1. 收到 sessionId: ${sessionId}`);
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "缺少 sessionId", results }, { status: 400 });
+    }
+
+    // 檢查 Supabase 連線
+    const supabase = getServiceClient();
+    if (!supabase) {
+      results.push("2. FAIL: Supabase client 建立失敗（缺少環境變數）");
+      return NextResponse.json({ error: "Supabase 未設定", results }, { status: 500 });
+    }
+    results.push("2. OK: Supabase client 建立成功");
+
+    // 檢查 session 是否存在
+    const { data: session, error: sessionError } = await supabase
+      .from("game_sessions")
+      .select("id, player_id")
+      .eq("id", sessionId)
+      .single();
+
+    if (sessionError) {
+      results.push(`3. FAIL: 查詢 game_sessions 失敗: ${sessionError.message} (code: ${sessionError.code})`);
+      return NextResponse.json({ error: sessionError.message, results }, { status: 500 });
+    }
+    results.push(`3. OK: game_sessions 找到 session, player_id=${session.player_id}`);
+
+    // 檢查 player_stats 表是否存在
+    const { data: existingStats, error: statsError } = await supabase
+      .from("player_stats")
+      .select("*")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+
+    if (statsError) {
+      results.push(`4. FAIL: 查詢 player_stats 失敗: ${statsError.message} (code: ${statsError.code})`);
+      results.push("   可能原因: player_stats 表不存在，請確認已執行 011_player_stats.sql 遷移");
+      return NextResponse.json({ error: statsError.message, results }, { status: 500 });
+    }
+    results.push(`4. OK: player_stats 查詢成功, 現有資料: ${existingStats ? JSON.stringify(existingStats) : "無（將新建）"}`);
+
+    // 直接寫入測試數據
+    const testGameData = {
+      silver_change: 100,
+      new_items: ["測試寶劍", "測試護身符"],
+      new_subordinates: [],
+      new_skills: [],
+      affection_changes: { "測試NPC": 5 },
+    };
+    results.push(`5. 準備寫入測試數據: ${JSON.stringify(testGameData)}`);
+
+    const writeOk = await updatePlayerStats(sessionId, testGameData, 999);
+    results.push(`6. updatePlayerStats 結果: ${writeOk ? "成功" : "失敗"}`);
+
+    // 重新讀取驗證
+    const { data: afterStats, error: afterError } = await supabase
+      .from("player_stats")
+      .select("*")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+
+    if (afterError) {
+      results.push(`7. FAIL: 寫入後讀取失敗: ${afterError.message}`);
+    } else if (afterStats) {
+      results.push(`7. OK: 寫入後讀取成功: silver=${afterStats.silver}, items=${JSON.stringify(afterStats.items)}, affection=${JSON.stringify(afterStats.affection)}`);
+    } else {
+      results.push("7. FAIL: 寫入後讀取不到資料（可能寫入失敗）");
+    }
+
+    // 也測試 player-stats API 會讀到的格式
+    const { data: apiReadStats } = await supabase
+      .from("player_stats")
+      .select("silver, items, subordinates, skills, affection, updated_at")
+      .eq("session_id", sessionId)
+      .single();
+
+    results.push(`8. player-stats API 讀取格式: ${apiReadStats ? JSON.stringify(apiReadStats) : "null"}`);
+
+    return NextResponse.json({ success: true, results });
+  } catch (error) {
+    results.push(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+    return NextResponse.json({ error: "測試失敗", results }, { status: 500 });
+  }
+}

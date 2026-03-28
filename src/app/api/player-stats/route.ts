@@ -23,34 +23,43 @@ export async function GET(request: NextRequest) {
     }
 
     const sessionId = request.nextUrl.searchParams.get("sessionId");
+    console.log(`[PLAYER_STATS] 請求 playerId=${playerId} sessionId=${sessionId}`);
+
     if (!sessionId) {
       return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
     }
 
     const supabase = getServiceClient();
     if (!supabase) {
+      console.log("[PLAYER_STATS] FAIL: Supabase client 建立失敗");
       return NextResponse.json({ error: "資料庫未設定" }, { status: 500 });
     }
 
     // 驗證 session 歸屬
-    const { data: session } = await supabase
+    const { data: session, error: sessionErr } = await supabase
       .from("game_sessions")
       .select("player_id")
       .eq("id", sessionId)
       .single();
 
+    console.log(`[PLAYER_STATS] session 查詢: data=${JSON.stringify(session)} error=${sessionErr?.message ?? "none"}`);
+
     if (!session || session.player_id !== playerId) {
+      console.log(`[PLAYER_STATS] 歸屬檢查失敗: session.player_id=${session?.player_id} != playerId=${playerId}`);
       return NextResponse.json({ error: "無權存取此存檔" }, { status: 403 });
     }
 
     // 讀取玩家數據
-    const { data: stats } = await supabase
+    const { data: stats, error: statsErr } = await supabase
       .from("player_stats")
       .select("silver, items, subordinates, skills, affection, updated_at")
       .eq("session_id", sessionId)
       .single();
 
+    console.log(`[PLAYER_STATS] player_stats 查詢: data=${stats ? "有資料" : "null"} error=${statsErr?.message ?? "none"}`);
+
     if (!stats) {
+      console.log(`[PLAYER_STATS] 回傳 exists=false (${statsErr?.code === "PGRST116" ? "表存在但無資料" : statsErr?.code ?? "unknown"})`);
       return NextResponse.json({
         silver: 0,
         items: [],
@@ -61,6 +70,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    console.log(`[PLAYER_STATS] 回傳 exists=true silver=${stats.silver} items=${JSON.stringify(stats.items)}`);
     return NextResponse.json({
       silver: stats.silver,
       items: stats.items,

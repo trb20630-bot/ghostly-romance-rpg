@@ -123,20 +123,29 @@ function normalizeGameData(raw: any): GameData | null {
  * 容錯：JSON 解析失敗時，仍回傳清理後的回覆
  */
 export function parseGameData(response: string): ParseResult {
+  console.log(`[PARSER] 輸入長度: ${response.length}`);
+
   const gameDataMatch = response.match(/\[GAME_DATA\]([\s\S]*?)\[\/GAME_DATA\]/);
+  console.log(`[PARSER] 正則匹配結果: ${gameDataMatch ? "找到" : "未找到"}`);
 
   if (!gameDataMatch) {
     return { cleanResponse: response, gameData: null };
   }
 
+  const rawJson = gameDataMatch[1].trim();
+  console.log(`[PARSER] 提取的 JSON 字串: ${JSON.stringify(rawJson)}`);
+
   const cleanResponse = response.replace(/\[GAME_DATA\][\s\S]*?\[\/GAME_DATA\]/, "").trim();
 
   try {
-    const raw = JSON.parse(gameDataMatch[1].trim());
+    const raw = JSON.parse(rawJson);
+    console.log(`[PARSER] JSON 解析成功: ${JSON.stringify(raw)}`);
     const gameData = normalizeGameData(raw);
+    console.log(`[PARSER] normalize 結果: ${gameData ? JSON.stringify(gameData) : "null（無有效變動）"}`);
     return { cleanResponse, gameData };
   } catch (e) {
-    console.error("GAME_DATA 解析失敗:", e);
+    console.error(`[PARSER] JSON 解析失敗: ${e instanceof Error ? e.message : String(e)}`);
+    console.error(`[PARSER] 原始內容: ${JSON.stringify(rawJson.slice(0, 500))}`);
     return { cleanResponse, gameData: null };
   }
 }
@@ -217,22 +226,26 @@ export async function updatePlayerStats(
       }
 
       // Upsert player_stats
+      const upsertPayload = {
+        session_id: sessionId,
+        silver: newSilver,
+        items: newItems,
+        subordinates: newSubordinates,
+        skills: newSkills,
+        affection: newAffection,
+        updated_at: new Date().toISOString(),
+      };
+      console.log(`[DB_WRITE] upsert payload: ${JSON.stringify(upsertPayload)}`);
+
       const { error: upsertError } = await supabase
         .from("player_stats")
-        .upsert(
-          {
-            session_id: sessionId,
-            silver: newSilver,
-            items: newItems,
-            subordinates: newSubordinates,
-            skills: newSkills,
-            affection: newAffection,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "session_id" }
-        );
+        .upsert(upsertPayload, { onConflict: "session_id" });
 
-      if (upsertError) throw upsertError;
+      if (upsertError) {
+        console.error(`[DB_WRITE] upsert 失敗: ${upsertError.message} (code: ${upsertError.code})`);
+        throw upsertError;
+      }
+      console.log("[DB_WRITE] upsert 成功");
 
       // 寫入歷史紀錄
       const { error: historyError } = await supabase
