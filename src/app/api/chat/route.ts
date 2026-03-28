@@ -129,6 +129,16 @@ export async function POST(request: NextRequest) {
     // 呼叫 Claude（使用 content blocks 格式，支援 prompt caching）
     const result = await callClaude(systemBlocks, messages, model);
 
+    // 先解析 GAME_DATA（必須在 validateAndFixResponse 之前，
+    // 否則選項驗證修復時會把 GAME_DATA 一起清掉）
+    const { cleanResponse, gameData } = parseGameData(result.text);
+    result.text = cleanResponse;
+
+    // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
+    if (gameData && gameState.sessionId) {
+      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1);
+    }
+
     // 取得當前場景 NPC 名單（用於選項生成）
     const sceneNpcs = gameState.player?.character
       ? getNpcNames(gameState.player.character, gameState.currentLocation)
@@ -141,15 +151,6 @@ export async function POST(request: NextRequest) {
       npcs: sceneNpcs,
       truncated: result.truncated,
     });
-
-    // 解析 GAME_DATA（從 AI 回覆中提取數據，並清除標記）
-    const { cleanResponse, gameData } = parseGameData(result.text);
-    result.text = cleanResponse;
-
-    // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
-    if (gameData && gameState.sessionId) {
-      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1);
-    }
 
     // 偵測日夜 / 地點 / 階段變化
     const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);
