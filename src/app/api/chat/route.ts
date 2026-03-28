@@ -6,6 +6,7 @@ import { validateContextBeforeAI } from "@/lib/context-guard";
 import { validateAndFixResponse } from "@/lib/validateResponse";
 import { getNpcNames } from "@/lib/prompts/characters";
 import { authenticateOrFallback, unauthorizedResponse } from "@/lib/auth-guard";
+import { parseGameData, updatePlayerStats } from "@/lib/game-data-parser";
 import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
@@ -140,6 +141,15 @@ export async function POST(request: NextRequest) {
       npcs: sceneNpcs,
       truncated: result.truncated,
     });
+
+    // 解析 GAME_DATA（從 AI 回覆中提取數據，並清除標記）
+    const { cleanResponse, gameData } = parseGameData(result.text);
+    result.text = cleanResponse;
+
+    // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
+    if (gameData && gameState.sessionId) {
+      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1);
+    }
 
     // 偵測日夜 / 地點 / 階段變化
     const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);

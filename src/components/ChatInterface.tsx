@@ -37,6 +37,11 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
   const [shareLoading, setShareLoading] = useState(false);
   const [shareResult, setShareResult] = useState<"success" | "error" | null>(null);
 
+  // Player stats modal state
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [statsData, setStatsData] = useState<{ silver: number; items: string[]; subordinates: string[]; skills: string[]; affection: Record<string, number>; exists: boolean } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
   // Music feedback state
   const [showMusicFeedback, setShowMusicFeedback] = useState(false);
   const [musicFeedbackText, setMusicFeedbackText] = useState("");
@@ -593,6 +598,22 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
     }
   }
 
+  async function fetchPlayerStats() {
+    if (!game.sessionId) return;
+    setStatsLoading(true);
+    try {
+      const res = await authFetch(`/api/player-stats?sessionId=${game.sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStatsData(data);
+      }
+    } catch {
+      // 靜默失敗
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
@@ -751,6 +772,13 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   title="手動存檔"
                 >
                   💾<span className="hidden sm:inline"> 存檔</span>
+                </button>
+                <button
+                  onClick={() => { fetchPlayerStats(); setShowStatsModal(true); }}
+                  className="btn-ancient rounded-lg px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
+                  title="查看狀態"
+                >
+                  📊<span className="hidden sm:inline"> 狀態</span>
                 </button>
               </>
             )}
@@ -1116,6 +1144,127 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Player Stats Modal */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night/80 backdrop-blur-sm">
+          <div className="glass-panel ancient-frame corner-decor rounded-2xl p-6 sm:p-8 w-full max-w-sm animate-fade-in-up space-y-4">
+            <h2 className="text-xl text-gold font-bold tracking-widest text-center">玩家狀態</h2>
+            <div className="ancient-divider mx-auto max-w-[120px]">❖</div>
+
+            {statsLoading ? (
+              <p className="text-center text-ghost-white/50 text-sm animate-pulse">載入中⋯</p>
+            ) : !statsData || !statsData.exists ? (
+              <p className="text-center text-ghost-white/40 text-sm">尚無數據</p>
+            ) : (
+              <div className="space-y-4">
+                {/* 銀兩 */}
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💰</span>
+                  <span className="text-sm text-gold/90 tracking-wider">銀兩</span>
+                  <span className="ml-auto text-sm text-ghost-white font-bold">{statsData.silver} 兩</span>
+                </div>
+
+                {/* 物品欄 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">📦</span>
+                    <span className="text-sm text-gold/90 tracking-wider">物品欄</span>
+                  </div>
+                  {statsData.items.length === 0 ? (
+                    <p className="text-xs text-ghost-white/30 ml-7">空無一物</p>
+                  ) : (
+                    <div className="ml-7 flex flex-wrap gap-1.5">
+                      {statsData.items.map((item, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-gold/10 text-gold/80 border border-gold/20">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 部屬 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">👥</span>
+                    <span className="text-sm text-gold/90 tracking-wider">部屬</span>
+                  </div>
+                  {statsData.subordinates.length === 0 ? (
+                    <p className="text-xs text-ghost-white/30 ml-7">尚無部屬</p>
+                  ) : (
+                    <div className="ml-7 flex flex-wrap gap-1.5">
+                      {statsData.subordinates.map((sub, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-jade/10 text-jade/80 border border-jade/20">
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 技能/發明 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">⚡</span>
+                    <span className="text-sm text-gold/90 tracking-wider">技能/發明</span>
+                  </div>
+                  {statsData.skills.length === 0 ? (
+                    <p className="text-xs text-ghost-white/30 ml-7">尚無技能</p>
+                  ) : (
+                    <div className="ml-7 flex flex-wrap gap-1.5">
+                      {statsData.skills.map((skill, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-purple-500/10 text-purple-300/80 border border-purple-500/20">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 好感度 */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">❤️</span>
+                    <span className="text-sm text-gold/90 tracking-wider">好感度</span>
+                  </div>
+                  {Object.keys(statsData.affection).length === 0 ? (
+                    <p className="text-xs text-ghost-white/30 ml-7">尚未結識任何人</p>
+                  ) : (
+                    <div className="ml-7 space-y-1.5">
+                      {Object.entries(statsData.affection).map(([npc, value]) => (
+                        <div key={npc} className="flex items-center gap-2">
+                          <span className="text-xs text-ghost-white/70 min-w-[4rem]">{npc}</span>
+                          <div className="flex-1 h-1.5 rounded-full bg-ghost-white/10 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                value >= 0 ? "bg-jade" : "bg-blood-red"
+                              }`}
+                              style={{ width: `${Math.min(100, Math.abs(value))}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-mono min-w-[2rem] text-right ${
+                            value >= 0 ? "text-jade" : "text-blood-red"
+                          }`}>
+                            {value > 0 ? "+" : ""}{value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowStatsModal(false)}
+              className="w-full btn-ancient rounded-lg py-2.5 text-sm tracking-wider mt-2"
+            >
+              關閉
+            </button>
           </div>
         </div>
       )}
