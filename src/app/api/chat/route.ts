@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
     if (gameData && gameState.sessionId) {
       void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1)
-        .then((ok) => console.log(`[GAME_DATA] DB 寫入: ${ok ? "成功" : "失敗"} | session: ${gameState.sessionId}`));
+        .then((r) => console.log(`[GAME_DATA] DB 寫入: ${r.ok ? "成功" : `失敗: ${r.error}`} | session: ${gameState.sessionId}`));
     }
 
     // 取得當前場景 NPC 名單（用於選項生成）

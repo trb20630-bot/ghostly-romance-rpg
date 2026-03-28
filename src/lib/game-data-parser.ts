@@ -141,12 +141,13 @@ export async function updatePlayerStats(
   sessionId: string,
   gameData: ParsedGameData,
   roundNumber: number
-): Promise<boolean> {
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const supabase = getServiceClient();
     if (!supabase) {
-      console.error("[DB_WRITE] Supabase client 建立失敗（缺少環境變數）");
-      return false;
+      const msg = "Supabase client 建立失敗（缺少 NEXT_PUBLIC_SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY）";
+      console.error(`[DB_WRITE] ${msg}`);
+      return { ok: false, error: msg };
     }
 
     // 讀取現有數據（maybeSingle 不會在無資料時拋錯）
@@ -157,8 +158,9 @@ export async function updatePlayerStats(
       .maybeSingle();
 
     if (readError) {
-      console.error(`[DB_WRITE] 讀取失敗: ${readError.message} (${readError.code})`);
-      return false;
+      const msg = `讀取 player_stats 失敗: ${readError.message} (code: ${readError.code}, details: ${readError.details}, hint: ${readError.hint})`;
+      console.error(`[DB_WRITE] ${msg}`);
+      return { ok: false, error: msg };
     }
 
     console.log(`[DB_WRITE] 現有資料: ${existing ? "有" : "無"}`);
@@ -228,8 +230,9 @@ export async function updatePlayerStats(
     }
 
     if (writeError) {
-      console.error(`[DB_WRITE] 寫入失敗: ${writeError.message} (${writeError.code})`);
-      return false;
+      const msg = `寫入 player_stats 失敗: ${writeError.message} (code: ${writeError.code}, details: ${writeError.details}, hint: ${writeError.hint})`;
+      console.error(`[DB_WRITE] ${msg}`);
+      return { ok: false, error: msg };
     }
 
     console.log("[DB_WRITE] 寫入成功");
@@ -241,9 +244,10 @@ export async function updatePlayerStats(
       game_data: gameData,
     });
 
-    return true;
+    return { ok: true };
   } catch (error) {
-    console.error(`[DB_WRITE] 例外: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
+    const msg = `例外: ${error instanceof Error ? `${error.message}\n${error.stack}` : String(error)}`;
+    console.error(`[DB_WRITE] ${msg}`);
+    return { ok: false, error: msg };
   }
 }

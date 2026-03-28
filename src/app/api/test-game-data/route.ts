@@ -70,11 +70,33 @@ export async function POST(request: NextRequest) {
     }
 
     // 直接寫入
-    results.push(`6. 開始寫入 DB...`);
-    const writeOk = await updatePlayerStats(sessionId, parsedData, 999);
-    results.push(`6. updatePlayerStats 結果: ${writeOk ? "成功" : "失敗（查看 Vercel Logs [DB_WRITE]）"}`);
+    results.push("6. 開始寫入 DB...");
+    const writeResult = await updatePlayerStats(sessionId, parsedData, 999);
+    if (writeResult.ok) {
+      results.push("6. OK: updatePlayerStats 成功");
+    } else {
+      results.push(`6. FAIL: updatePlayerStats 失敗`);
+      results.push(`   錯誤: ${writeResult.error}`);
 
-    if (!writeOk) {
+      // 降級方案：直接用 raw insert 測試
+      results.push("6b. 嘗試直接 raw insert...");
+      const { error: rawError } = await supabase
+        .from("player_stats")
+        .insert({
+          session_id: sessionId,
+          silver: 100,
+          items: ["raw測試劍"],
+          subordinates: [],
+          skills: [],
+          affection: {},
+          updated_at: new Date().toISOString(),
+        });
+      if (rawError) {
+        results.push(`6b. FAIL: raw insert 也失敗: ${rawError.message} (code: ${rawError.code}, details: ${rawError.details}, hint: ${rawError.hint})`);
+      } else {
+        results.push("6b. OK: raw insert 成功（問題在 updatePlayerStats 邏輯而非 DB）");
+      }
+
       return NextResponse.json({ error: "DB 寫入失敗", results }, { status: 500 });
     }
 
