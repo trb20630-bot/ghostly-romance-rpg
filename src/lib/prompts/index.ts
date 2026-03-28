@@ -113,6 +113,12 @@ export function assemblePrompt(
     dynamicPrompt += "\n\n" + buildMemoryContext(memory);
   }
 
+  // GAME_DATA 提醒（放在動態區塊最末尾，離 messages 最近，確保 AI 注意到）
+  dynamicPrompt += `\n\n⚠️ 回覆末尾必須輸出 [GAME_DATA] 區塊（第 4 步）。即使沒有數據變化也要輸出空物件：
+[GAME_DATA]
+{}
+[/GAME_DATA]`;
+
   // ─── 組裝 system content blocks ───
   const systemBlocks: SystemContentBlock[] = [
     {

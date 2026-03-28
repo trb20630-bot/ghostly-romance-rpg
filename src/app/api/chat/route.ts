@@ -11,6 +11,9 @@ import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
 
+// 版本標記 — 用於確認 Vercel 部署的程式碼版本
+const CHAT_API_VERSION = "2026-03-28-v5-gamedata-fix";
+
 /**
  * 從 AI 回覆中偵測日夜變化關鍵詞
  * 回傳 true = 天亮, false = 入夜, undefined = 無變化
@@ -129,28 +132,31 @@ export async function POST(request: NextRequest) {
     // 呼叫 Claude（使用 content blocks 格式，支援 prompt caching）
     const result = await callClaude(systemBlocks, messages, model);
 
-    // 先解析 GAME_DATA（必須在 validateAndFixResponse 之前，
-    // 否則選項驗證修復時會把 GAME_DATA 一起清掉）
-    const hasGameDataTag = /\[GAME_DATA\]/.test(result.text);
-    console.log(
-      `[GAME_DATA] Round ${gameState.roundNumber + 1} | ` +
-      `AI 回覆含 [GAME_DATA] 標記: ${hasGameDataTag} | ` +
-      `AI 回覆尾段: ${JSON.stringify(result.text.slice(-200))}`
-    );
+    // === GAME_DATA 診斷 ===
+    console.log(`[GAME_DATA][${CHAT_API_VERSION}] Round ${gameState.roundNumber + 1}`);
+    console.log(`[GAME_DATA] AI 原始回覆前 300 字: ${JSON.stringify(result.text.slice(0, 300))}`);
+    console.log(`[GAME_DATA] AI 原始回覆後 300 字: ${JSON.stringify(result.text.slice(-300))}`);
 
+    const hasOpenTag = result.text.includes("[GAME_DATA]");
+    const hasCloseTag = result.text.includes("[/GAME_DATA]");
+    console.log(`[GAME_DATA] 含 [GAME_DATA] 開啟標記: ${hasOpenTag} | 含 [/GAME_DATA] 關閉標記: ${hasCloseTag}`);
+
+    // 先解析 GAME_DATA（必須在 validateAndFixResponse 之前）
     const { cleanResponse, gameData } = parseGameData(result.text);
     result.text = cleanResponse;
 
-    console.log(
-      `[GAME_DATA] 解析結果: ${gameData ? JSON.stringify(gameData) : "null（無數據或解析失敗）"}`
-    );
+    if (gameData) {
+      console.log(`[GAME_DATA] 解析成功: ${JSON.stringify(gameData)}`);
+    } else if (hasOpenTag) {
+      console.log("[GAME_DATA] 有標記但解析失敗（JSON 格式錯誤或無有效變動）");
+    } else {
+      console.log("[GAME_DATA] AI 未輸出 [GAME_DATA] 標記");
+    }
 
     // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
     if (gameData && gameState.sessionId) {
       void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1)
-        .then((ok) => console.log(`[GAME_DATA] DB 寫入結果: ${ok ? "成功" : "失敗"}`));
-    } else if (!gameData) {
-      console.log("[GAME_DATA] 跳過 DB 寫入（gameData 為 null）");
+        .then((ok) => console.log(`[GAME_DATA] DB 寫入: ${ok ? "成功" : "失敗"} | session: ${gameState.sessionId}`));
     }
 
     // 取得當前場景 NPC 名單（用於選項生成）
@@ -187,6 +193,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: result.text,
       model,
+      _v: CHAT_API_VERSION,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       cacheCreationInputTokens: result.cacheCreationInputTokens,
