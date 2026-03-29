@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
           learned_skills: [],
           visited_places: [],
           important_items: [],
+          completed_events: [],
         },
         story_summaries: [],
         last_summarized_round: 0,

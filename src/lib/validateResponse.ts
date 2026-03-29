@@ -304,36 +304,24 @@ export function hasDuplicateChoices(response: string): boolean {
 }
 
 /**
- * 檢查選項是否為被禁止的泛用選項
+ * 只擋極端情況（空選項、系統用語、無效填充），其餘信任 AI 的 prompt 引導
  */
-function hasGenericChoices(response: string): boolean {
-  const bannedPatterns = [
-    // 原有禁止清單
-    /探索四周環境/,
-    /仔細觀察眼前的狀況/,
-    /保持警戒，靜待變化/,
-    /探索寺廟庭院/,
-    /找一間廂房休息/,
-    /留意周圍的動靜/,
-    // 擴充：不提及具體對象的觀察/探索/等待類
-    /觀察周圍/,
-    /觀察四周/,
-    /查看環境/,
-    /環顧四周/,
-    /靜觀其變/,
-    /靜待時機/,
-    /繼續觀察/,
-    /繼續等待/,
-    /先觀望/,
-    /四處看看/,
-    /查探四周/,
-  ];
-  let matchCount = 0;
-  for (const pattern of bannedPatterns) {
-    if (pattern.test(response)) matchCount++;
+const EXTREME_PATTERNS = [
+  /^[A-C]\.?\s*$/,            // 空選項（只有字母）
+  /^(確定|取消|是|否|好的?)$/,   // 系統用語
+  /^\.{3,}$/,                  // 純省略號
+  /^(略|無|N\/A)$/i,           // 無效填充
+];
+
+function hasExtremeChoices(response: string): boolean {
+  const choices = extractChoiceTexts(response);
+  if (!choices) return false;
+
+  for (const text of [choices.a, choices.b, choices.c]) {
+    const trimmed = text.trim();
+    if (EXTREME_PATTERNS.some(p => p.test(trimmed))) return true;
   }
-  // 命中 1 個以上泛用選項就視為泛用（從 2 降到 1，更嚴格）
-  return matchCount >= 1;
+  return false;
 }
 
 /**
@@ -457,22 +445,19 @@ export function validateAndFixResponse(
     return cleaned.trimEnd().replace(/[.。…]+$/, "") + choices;
   }
 
-  // 已有完整選項 → 檢查品質
+  // 已有完整選項 → 只擋極端情況，其餘信任 AI 的 prompt 引導
   if (hasPlayerChoices(response)) {
-    const isGeneric = hasGenericChoices(response);
-    const isDuplicate = hasDuplicateChoices(response);
-
-    if (!isGeneric && !isDuplicate) {
-      return response; // 選項完整、不泛用、不重複 → 通過
+    // 相似度偏高時僅記錄，不重生（信任 AI 的 few-shot 引導）
+    if (hasDuplicateChoices(response)) {
+      console.warn("[validateResponse] 選項相似度偏高（僅記錄，不重生）");
     }
 
-    // 品質不合格 → 清除舊選項，根據敘事重新生成
-    if (isGeneric) {
-      console.warn("[validateResponse] 偵測到泛用選項，根據敘事重新生成...");
+    // 只在極端情況才 reject（空選項、系統用語等）
+    if (!hasExtremeChoices(response)) {
+      return response;
     }
-    if (isDuplicate) {
-      console.warn("[validateResponse] 偵測到重複/相似選項，根據敘事重新生成...");
-    }
+
+    console.warn("[validateResponse] 偵測到極端無效選項，根據敘事重新生成...");
     const narrative = extractNarrativeFromResponse(response);
     const choices = generateContextualChoices(
       narrative,
