@@ -52,9 +52,17 @@ export function assemblePrompt(
   // ─── 動態區塊：每輪可能變化的內容（不 cache） ───
   let dynamicPrompt = "";
 
-  // 注入玩家角色名稱
-  if (gameState.player?.characterName) {
-    dynamicPrompt += `\n玩家角色名：「${gameState.player.characterName}」`;
+  // 注入玩家身份（明確角色 = 玩家本人）
+  if (gameState.player) {
+    const originalChar = gameState.player.character;
+    const customName = gameState.player.characterName;
+    if (customName) {
+      dynamicPrompt += `\n【重要】玩家的身份：
+- 玩家已轉生成為【${originalChar}】
+- 玩家自訂的名字是「${customName}」
+- 用第二人稱「你」描述玩家的行動
+- ${originalChar}就是玩家本人，不是 NPC`;
+    }
   }
 
   // 根據遊戲階段追加 Prompt

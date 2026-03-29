@@ -29,7 +29,17 @@ function detectTimeChange(text: string, currentIsDaytime: boolean): boolean | un
 }
 
 /** 已知遊戲地點（避免誤判）*/
-const KNOWN_LOCATIONS = ["現代", "輪迴", "金華城", "蘭若寺", "蘭若寺地下", "墓地"];
+const KNOWN_LOCATIONS = [
+  // 現代
+  "現代", "輪迴",
+  // 核心地點
+  "金華城", "蘭若寺", "蘭若寺地下", "墓地",
+  // 擴展地點
+  "杭州", "溫州", "衢州", "紹興", "蘇州", "南京",
+  "北京", "盛京", "遼東", "遼東半島", "金州",
+  // 通用地點
+  "客棧", "酒樓", "集市", "碼頭", "山路", "官道", "村莊", "城門",
+];
 
 /**
  * 從 AI 回覆中偵測地點變化
@@ -49,14 +59,25 @@ function detectLocationChange(text: string, currentLocation: string): string | n
  * 從 AI 回覆中偵測階段轉換
  * death → reincarnation → story → ending
  */
-function detectPhaseTransition(text: string, currentPhase: string): string | null {
+function detectPhaseTransition(text: string, currentPhase: string, roundNumber?: number): string | null {
   if (currentPhase === "death") {
     if (/輪迴|轉生|投胎|靈魂.*穿越|穿越.*古代|醒來.*發現|睜開眼.*古/.test(text)) {
       return "reincarnation";
     }
+    // 後備：death 超過 15 輪自動推進
+    if (roundNumber && roundNumber > 15) {
+      console.log("[Phase] 後備觸發：death 超過 15 輪，自動推進到 reincarnation");
+      return "reincarnation";
+    }
   }
   if (currentPhase === "reincarnation") {
-    if (/你就是.*[聶寧]|成為了.*[聶寧]|轉生為|以.*身分/.test(text)) {
+    // 更寬鬆的偵測：支援自訂角色名和各種轉生描述
+    if (/你就是|成為了|轉生為|以.*身分|你現在是|你醒來.*古|發現自己.*在.*[城寺鎮村]|你的新身分|你的新生/.test(text)) {
+      return "story";
+    }
+    // 後備：reincarnation 超過 5 輪自動推進
+    if (roundNumber && roundNumber > 5) {
+      console.log("[Phase] 後備觸發：reincarnation 超過 5 輪，自動推進到 story");
       return "story";
     }
   }
@@ -164,7 +185,7 @@ export async function POST(request: NextRequest) {
     // 偵測日夜 / 地點 / 階段變化
     const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);
     const newLocation = detectLocationChange(result.text, gameState.currentLocation);
-    const newPhase = detectPhaseTransition(result.text, gameState.phase);
+    const newPhase = detectPhaseTransition(result.text, gameState.phase, gameState.roundNumber);
 
     // Token 監控（fire-and-forget，含 cache 統計）
     void logTokenUsage({

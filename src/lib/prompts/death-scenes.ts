@@ -71,5 +71,11 @@ export function buildReincarnationPrompt(
 ### 寫作風格
 - 輪迴通道部分用詩意、夢幻的筆觸
 - 醒來部分用感官描寫（觸覺、嗅覺、視覺）
-- 結尾給出 2-3 個選項讓玩家決定如何應對`;
+- 結尾給出 2-3 個選項讓玩家決定如何應對
+
+### 格式要求（系統偵測用，必須遵守）
+轉生敘事的結尾必須包含以下任一句式：
+- 「你就是${targetCharacter}」
+- 「你已轉生為${targetCharacter}」
+- 「你的新身分是${targetCharacter}」`;
 }

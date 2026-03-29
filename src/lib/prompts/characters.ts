@@ -43,27 +43,31 @@ const NPC_DATA: Record<string, Record<string, string>> = {
 };
 
 /**
- * 取得當前場景的 NPC 描述
+ * 取得當前場景的 NPC 描述（過濾掉玩家自身角色）
  */
 export function getNpcPrompt(character: string, location: string): string {
   const key = `${character}_${location}`;
   const npcs = NPC_DATA[key];
   if (!npcs || Object.keys(npcs).length === 0) return "";
 
-  const lines = Object.entries(npcs)
+  // 過濾掉玩家自身角色名（避免把玩家角色當 NPC 描述）
+  const filtered = Object.entries(npcs).filter(([name]) => name !== character);
+  if (filtered.length === 0) return "";
+
+  const lines = filtered
     .map(([name, desc]) => `${name}：${desc}`)
     .join("；");
   return `\n## 當前場景NPC\n${lines}`;
 }
 
 /**
- * 取得當前場景的 NPC 名字列表（用於選項驗證）
+ * 取得當前場景的 NPC 名字列表（用於選項驗證，過濾玩家角色）
  */
 export function getNpcNames(character: string, location: string): string[] {
   const key = `${character}_${location}`;
   const npcs = NPC_DATA[key];
   if (!npcs) return [];
-  return Object.keys(npcs);
+  return Object.keys(npcs).filter((name) => name !== character);
 }
 
 export type CharacterKey = keyof typeof CHARACTER_PROMPTS;
