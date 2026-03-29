@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     });
 
     result.text = validation.text;
-    const characterName = gameState.player?.character || "玩家";
+    const characterName = gameState.player?.characterName || gameState.player?.character || "玩家";
 
     // Haiku 選項品質檢查流程
     if (validation.needsChoiceCheck) {
