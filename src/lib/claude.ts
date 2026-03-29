@@ -51,7 +51,7 @@ export async function callClaude(
   systemPrompt: string | SystemContentBlock[],
   messages: ClaudeMessage[],
   model: "sonnet" | "haiku" = "sonnet",
-  maxTokens: number = 4000
+  maxTokens: number = 6000
 ): Promise<ClaudeCallResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -102,6 +102,108 @@ export interface ClaudeResult {
   text: string;
   inputTokens: number;
   outputTokens: number;
+}
+
+/**
+ * 用 Haiku 檢查選項是否符合敘事上下文
+ * 失敗時預設通過，不阻擋遊戲流程
+ */
+export async function validateChoicesWithHaiku(
+  choices: string[],
+  narrative: string,
+  character: string,
+  location: string
+): Promise<{ valid: boolean; invalidChoices: string[]; reason?: string }> {
+  if (choices.length < 3) {
+    return { valid: false, invalidChoices: [], reason: "選項不足三個" };
+  }
+
+  const prompt = `你是選項品質檢查器。判斷以下三個選項是否符合敘事上下文。
+
+【最近敘事】
+${narrative.slice(-800)}
+
+【玩家角色】${character}
+【當前地點】${location}
+
+【選項】
+A. ${choices[0] || "（空）"}
+B. ${choices[1] || "（空）"}
+C. ${choices[2] || "（空）"}
+
+【檢查標準】
+1. 選項必須與上方敘事內容相關
+2. 選項必須包含敘事中出現的人名、地名或物品
+3. 不能是泛用選項，例如：觀察周圍、思考一下、繼續前進、仔細查看、回想線索、整理思緒
+4. 三個選項不能意思重複
+
+【輸出】
+只輸出一個 JSON，不要其他文字：
+- 全部通過：{"valid": true}
+- 有問題：{"valid": false, "invalidChoices": ["A", "B"], "reason": "簡短說明問題"}`;
+
+  try {
+    const result = await callClaude(prompt, [{ role: "user", content: "請檢查" }], "haiku", 200);
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        valid: parsed.valid ?? false,
+        invalidChoices: parsed.invalidChoices ?? [],
+        reason: parsed.reason,
+      };
+    }
+    console.warn("[Haiku 檢查] JSON 解析失敗，預設通過");
+    return { valid: true, invalidChoices: [] };
+  } catch (error) {
+    console.error("[Haiku 檢查] 錯誤:", error);
+    return { valid: true, invalidChoices: [] };
+  }
+}
+
+/**
+ * 用 Haiku 根據敘事內容重新生成高品質選項
+ */
+export async function regenerateChoicesWithHaiku(
+  narrative: string,
+  character: string,
+  location: string,
+  reason: string
+): Promise<string[]> {
+  const prompt = `你是古風RPG選項生成器。根據以下敘事重新生成三個高品質選項。
+
+原因：${reason}
+
+【敘事內容】
+${narrative.slice(-600)}
+
+【玩家角色】${character}
+【當前地點】${location}
+
+【要求】
+1. 必須引用敘事中出現的具體人物、地點或物品
+2. 禁止泛用選項：「觀察周圍」「思考一下」「繼續前進」「仔細查看」「回想線索」「整理思緒」
+3. 每個選項必須有明確動詞+對象
+4. 三個選項指向不同的劇情方向
+
+【格式】
+只輸出三行：
+A. [具體選項]
+B. [具體選項]
+C. [具體選項]`;
+
+  try {
+    const result = await callClaude(prompt, [{ role: "user", content: "請生成" }], "haiku", 300);
+    const choices: string[] = [];
+    for (const line of result.text.split("\n")) {
+      const match = line.match(/^[A-Ca-c][.、）)]\s*(.+)/);
+      if (match?.[1]) choices.push(match[1].trim());
+    }
+    return choices.slice(0, 3);
+  } catch (error) {
+    console.error("[重新生成選項] 錯誤:", error);
+    return [];
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
- * 選項驗證測試（問題 3 + 4 修復）
- * 測試重複檢查、泛用檢查、validateAndFixResponse
+ * 選項驗證測試
+ * 測試重複檢查、極端檢查、validateAndFixResponse
  */
 
 import { describe, it, expect } from "vitest";
@@ -10,6 +10,7 @@ import {
   choiceSimilarity,
   hasDuplicateChoices,
   extractChoiceTexts,
+  injectChoices,
 } from "@/lib/validateResponse";
 
 // =============================================================
@@ -60,7 +61,6 @@ describe("choiceSimilarity", () => {
   it("中等相似（有共同元素但方向不同）→ 低於高度相似", () => {
     const simHigh = choiceSimilarity("觀察小倩的反應", "仔細觀察小倩的表情");
     const simMed = choiceSimilarity("向小倩搭話詢問身世", "靜靜觀察小倩的舉動");
-    // 中等相似應該低於高度相似
     expect(simMed).toBeLessThan(simHigh);
     expect(simMed).toBeLessThan(0.6);
   });
@@ -132,42 +132,52 @@ describe("hasPlayerChoices", () => {
 });
 
 // =============================================================
-// validateAndFixResponse 完整流程
+// injectChoices
+// =============================================================
+describe("injectChoices", () => {
+  it("正確注入三個選項", () => {
+    const result = injectChoices("敘事內容", ["行動一", "行動二", "行動三"]);
+    expect(result).toContain("【你的選擇】");
+    expect(result).toContain("A. 行動一");
+    expect(result).toContain("B. 行動二");
+    expect(result).toContain("C. 行動三");
+    expect(result).toContain("D. 或輸入你想做的事");
+  });
+
+  it("選項不足三個 → 原樣回傳", () => {
+    expect(injectChoices("敘事", ["一", "二"])).toBe("敘事");
+  });
+});
+
+// =============================================================
+// validateAndFixResponse（回傳 ValidationResult）
 // =============================================================
 describe("validateAndFixResponse", () => {
   const ctx = { location: "蘭若寺", phase: "story" };
 
-  it("完整且不重複的選項 → 原樣通過", () => {
+  it("完整且不重複的選項 → needsChoiceCheck=true（交由 Haiku 判斷）", () => {
     const response = `月光灑在蘭若寺的廊道上，小倩的身影若隱若現。
 
 【你的選擇】
 A. 向小倩搭話，詢問她為何在此徘徊
 B. 悄悄跟隨小倩，看她去向何處
 C. 轉身去找燕赤霞商議對策
-D. 或輸入你想做的事
-<!-- SCENE: ROMANCE -->`;
+D. 或輸入你想做的事`;
     const result = validateAndFixResponse(response, ctx);
-    expect(result).toBe(response); // 原樣通過
+    expect(result.text).toBe(response);
+    expect(result.needsChoiceCheck).toBe(true);
+    expect(result.choiceIssue).toBeUndefined();
   });
 
-  it("沒有選項 → 自動補上", () => {
+  it("沒有選項 → needsChoiceCheck=true, choiceIssue='missing'", () => {
     const response = "月光灑在蘭若寺的廊道上，小倩的身影若隱若現。";
     const result = validateAndFixResponse(response, ctx);
-    expect(hasPlayerChoices(result)).toBe(true);
-    expect(result).toContain("【你的選擇】");
-    expect(result).toContain("A.");
-    expect(result).toContain("B.");
-    expect(result).toContain("C.");
+    expect(result.needsChoiceCheck).toBe(true);
+    expect(result.choiceIssue).toBe("missing");
+    expect(result.narrative).toContain("小倩");
   });
 
-  it("有泛用選項 → 清除並重新生成", () => {
-    const response = `敘事\n\n【你的選擇】\nA. 探索四周環境\nB. 觀察周圍動靜\nC. 繼續前行\nD. 或輸入你想做的事`;
-    const result = validateAndFixResponse(response, ctx);
-    expect(result).not.toContain("探索四周環境");
-    expect(hasPlayerChoices(result)).toBe(true);
-  });
-
-  it("有重複選項 → 清除並重新生成", () => {
+  it("重複選項 → needsChoiceCheck=true, choiceIssue='duplicate'", () => {
     const response = `小倩出現在你面前。
 
 【你的選擇】
@@ -176,20 +186,27 @@ B. 仔細觀察小倩的表情
 C. 靜靜觀察小倩的舉動
 D. 或輸入你想做的事`;
     const result = validateAndFixResponse(response, ctx);
-    // 重複的選項應該被替換
-    expect(result).toContain("【你的選擇】");
-    // 新選項應該包含小倩相關的具體行動（因為敘事中提到小倩）
-    expect(hasPlayerChoices(result)).toBe(true);
+    expect(result.needsChoiceCheck).toBe(true);
+    expect(result.choiceIssue).toBe("duplicate");
   });
 
-  it("被截斷的回應 → 清理並補上選項", () => {
+  it("被截斷的回應 → needsChoiceCheck=true, choiceIssue='truncated'", () => {
     const response = `敘事文字\n\n【你的選擇】\nA. 行動一\nB. 行動`;
     const result = validateAndFixResponse(response, { ...ctx, truncated: true });
-    expect(hasPlayerChoices(result)).toBe(true);
+    expect(result.needsChoiceCheck).toBe(true);
+    expect(result.choiceIssue).toBe("truncated");
+    expect(hasPlayerChoices(result.text)).toBe(false); // 殘缺被清除
   });
 
-  it("空回應 → 原樣回傳", () => {
-    expect(validateAndFixResponse("", ctx)).toBe("");
-    expect(validateAndFixResponse("  ", ctx)).toBe("  ");
+  it("空回應 → needsChoiceCheck=false", () => {
+    const result = validateAndFixResponse("", ctx);
+    expect(result.text).toBe("");
+    expect(result.needsChoiceCheck).toBe(false);
+  });
+
+  it("結局 → needsChoiceCheck=false", () => {
+    const response = "從此以後，二人幸福地生活在一起。全劇終。";
+    const result = validateAndFixResponse(response, { location: "蘭若寺", phase: "ending" });
+    expect(result.needsChoiceCheck).toBe(false);
   });
 });
