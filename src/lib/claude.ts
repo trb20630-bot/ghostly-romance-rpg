@@ -207,6 +207,109 @@ C. [具體選項]`;
 }
 
 /**
+ * 用 Haiku 驗證 GAME_DATA 是否符合敘事上下文（純文字格式）
+ * 失敗時預設通過，不阻擋遊戲流程
+ */
+export async function validateGameDataWithHaiku(
+  gameData: {
+    silver: number;
+    items: { add: string[]; remove: string[] };
+    followers: { add: string[]; remove: string[] };
+    skills: string[];
+    relationships: Record<string, number>;
+  },
+  narrative: string,
+  character: string,
+  location: string,
+  roundCounter: number
+): Promise<{ valid: boolean; invalidFields: string[]; reason?: string }> {
+  // 組合變動描述
+  const changes: string[] = [];
+  if (gameData.silver) changes.push(`銀兩${gameData.silver > 0 ? '+' : ''}${gameData.silver}`);
+  if (gameData.items.add.length) changes.push(`+物品:${gameData.items.add.join(',')}`);
+  if (gameData.items.remove.length) changes.push(`-物品:${gameData.items.remove.join(',')}`);
+  if (gameData.followers.add.length) changes.push(`+部屬:${gameData.followers.add.join(',')}`);
+  if (gameData.skills.length) changes.push(`+技能:${gameData.skills.join(',')}`);
+  if (Object.keys(gameData.relationships).length) {
+    const rels = Object.entries(gameData.relationships).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`);
+    changes.push(`好感:${rels.join(',')}`);
+  }
+
+  // 如果沒有任何變動，直接通過
+  if (changes.length === 0) {
+    console.log(`[狀態驗證] 第 ${roundCounter} 輪: 無變動，跳過驗證`);
+    return { valid: true, invalidFields: [] };
+  }
+
+  console.log(`[狀態驗證] 第 ${roundCounter} 輪`);
+  console.log(`[狀態驗證] 變動: ${changes.join(', ')}`);
+
+  const prompt = `驗證狀態變動是否符合敘事。
+
+【敘事】
+${narrative.slice(-800)}
+
+【角色】${character}
+【地點】${location}
+
+【變動】
+${changes.join('\n')}
+
+【規則】
+- 物品必須在敘事中被提到或合理獲得
+- 銀兩必須有交易或獲得描述
+- 部屬必須在敘事中加入隊伍
+- 技能必須在敘事中學會或領悟
+- 好感變動的NPC必須在敘事中出現
+
+【輸出】
+全部符合輸出一行：
+VALID
+
+有問題輸出三行：
+INVALID
+欄位:有問題的欄位用逗號分隔
+原因:簡短說明`;
+
+  try {
+    const result = await callClaude(prompt, [{ role: "user", content: "請驗證" }], "haiku", 100);
+    const text = result.text.trim();
+    const lines = text.split('\n').map(l => l.trim());
+    const firstLine = lines[0];
+
+    if (firstLine === 'VALID') {
+      console.log(`[狀態驗證] Haiku: VALID`);
+      console.log(`[狀態驗證] ✅ 已通過`);
+      return { valid: true, invalidFields: [] };
+    }
+
+    if (firstLine === 'INVALID') {
+      const fieldsLine = lines.find(l => l.startsWith('欄位:'));
+      const reasonLine = lines.find(l => l.startsWith('原因:'));
+      const fields = fieldsLine?.replace('欄位:', '').split(',').map(f => f.trim()) || [];
+      const reason = reasonLine?.replace('原因:', '').trim() || '驗證失敗';
+
+      console.log(`[狀態驗證] Haiku: INVALID`);
+      console.log(`[狀態驗證] 欄位: ${fields.join(', ')}`);
+      console.log(`[狀態驗證] 原因: ${reason}`);
+      console.log(`[狀態驗證] ❌ 已拒絕`);
+
+      return { valid: false, invalidFields: fields, reason };
+    }
+
+    // 無法解析，預設通過
+    console.warn(`[狀態驗證] 無法解析 Haiku 回應: ${text}`);
+    console.log(`[狀態驗證] ⚠️ 預設通過`);
+    return { valid: true, invalidFields: [] };
+
+  } catch (error) {
+    console.error(`[狀態驗證] Haiku 錯誤:`, error);
+    console.log(`[狀態驗證] ⚠️ 錯誤時預設通過`);
+    return { valid: true, invalidFields: [] };
+  }
+}
+
+/**
  * 用 Haiku 生成摘要
  */
 export async function summarizeWithHaiku(

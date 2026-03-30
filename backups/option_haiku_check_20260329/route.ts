@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaude, validateChoicesWithHaiku, regenerateChoicesWithHaiku, validateGameDataWithHaiku } from "@/lib/claude";
+import { callClaude } from "@/lib/claude";
 import { assemblePrompt } from "@/lib/prompts";
 import { logTokenUsage } from "@/lib/token-logger";
 import { validateContextBeforeAI } from "@/lib/context-guard";
-import { validateAndFixResponse, extractChoiceTexts, injectChoices, hasPlayerChoices } from "@/lib/validateResponse";
+import { validateAndFixResponse } from "@/lib/validateResponse";
 import { getNpcNames } from "@/lib/prompts/characters";
 import { authenticateOrFallback, unauthorizedResponse } from "@/lib/auth-guard";
 import { parseGameData, updatePlayerStats } from "@/lib/game-data-parser";
@@ -12,7 +12,7 @@ import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 export const runtime = "nodejs";
 
 // 版本標記 — 用於確認 Vercel 部署的程式碼版本
-const CHAT_API_VERSION = "2026-03-29-v8-haiku-choice-check";
+const CHAT_API_VERSION = "2026-03-28-v7-security-fix";
 const DEBUG = process.env.NODE_ENV === "development";
 
 /**
@@ -163,51 +163,10 @@ export async function POST(request: NextRequest) {
       console.log(`[GAME_DATA][${CHAT_API_VERSION}] Round ${gameState.roundNumber + 1} | tag: ${hasTag} | parsed: ${!!gameData}`);
     }
 
-    const characterName = gameState.player?.characterName || gameState.player?.character || "玩家";
-
-    // 如果有 GAME_DATA，先用 Haiku 驗證再寫入資料庫
+    // 如果有 GAME_DATA，fire-and-forget 寫入資料庫
     if (gameData && gameState.sessionId) {
-      void (async () => {
-        try {
-          const validation = await validateGameDataWithHaiku(
-            gameData,
-            cleanResponse,
-            characterName,
-            gameState.currentLocation,
-            gameState.roundNumber + 1
-          );
-
-          if (validation.valid) {
-            const r = await updatePlayerStats(gameState.sessionId!, gameData, gameState.roundNumber + 1);
-            if (!r.ok) console.warn(`[GAME_DATA] DB 寫入失敗: ${r.error}`);
-          } else {
-            console.log(`[狀態驗證] 記錄被拒絕的變動到 history`);
-            const supabase = await import("@supabase/supabase-js").then(m =>
-              m.createClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.SUPABASE_SERVICE_ROLE_KEY!
-              )
-            );
-            await supabase.from("player_stats_history").insert({
-              session_id: gameState.sessionId,
-              round_number: gameState.roundNumber + 1,
-              change_type: "rejected",
-              change_data: {
-                gameData,
-                reason: validation.reason,
-                invalidFields: validation.invalidFields,
-              },
-            }).then(({ error }) => {
-              if (error) console.error("[狀態驗證] history 寫入失敗:", error.message);
-            });
-          }
-        } catch (err) {
-          console.error("[狀態驗證] 驗證流程錯誤:", err);
-          // 錯誤時 fallback：直接寫入
-          const r = await updatePlayerStats(gameState.sessionId!, gameData, gameState.roundNumber + 1);
-          if (!r.ok) console.warn(`[GAME_DATA] DB 寫入失敗: ${r.error}`);
-        }
-      })();
+      void updatePlayerStats(gameState.sessionId, gameData, gameState.roundNumber + 1)
+        .then((r) => { if (!r.ok) console.warn(`[GAME_DATA] DB 寫入失敗: ${r.error}`); });
     }
 
     // 取得當前場景 NPC 名單（用於選項生成）
@@ -215,68 +174,13 @@ export async function POST(request: NextRequest) {
       ? getNpcNames(gameState.player.character, gameState.currentLocation)
       : undefined;
 
-    // 驗證回應：檢查選項完整性（不再注入硬編碼後備）
-    const validation = validateAndFixResponse(result.text, {
+    // 驗證回應：確保有完整的玩家引導選項（含 NPC 上下文）
+    result.text = validateAndFixResponse(result.text, {
       location: gameState.currentLocation,
       phase: gameState.phase,
       npcs: sceneNpcs,
       truncated: result.truncated,
     });
-
-    result.text = validation.text;
-
-    // Haiku 選項品質檢查流程
-    if (validation.needsChoiceCheck) {
-      const existingChoices = extractChoiceTexts(result.text);
-
-      if (existingChoices && !validation.choiceIssue) {
-        // 有選項但需要品質檢查
-        const choiceArray = [existingChoices.a, existingChoices.b, existingChoices.c];
-        const check = await validateChoicesWithHaiku(
-          choiceArray,
-          validation.narrative,
-          characterName,
-          gameState.currentLocation
-        );
-
-        if (!check.valid) {
-          console.log(`[Chat] Haiku 判定選項不合格: ${check.reason}`);
-          const newChoices = await regenerateChoicesWithHaiku(
-            validation.narrative,
-            characterName,
-            gameState.currentLocation,
-            check.reason || "選項與劇情無關"
-          );
-          if (newChoices.length >= 3) {
-            console.log("[Chat] Haiku 已重新生成選項");
-            result.text = injectChoices(validation.narrative, newChoices);
-          } else {
-            console.warn("[Chat] Haiku 重新生成失敗，保留原選項");
-          }
-        } else {
-          if (DEBUG) console.log("[Chat] Haiku 選項品質檢查通過");
-        }
-      } else {
-        // 選項缺失/截斷/極端 → 直接用 Haiku 生成
-        console.log(`[Chat] 選項${validation.choiceIssue || "缺失"}，Haiku 生成中...`);
-        const newChoices = await regenerateChoicesWithHaiku(
-          validation.narrative,
-          characterName,
-          gameState.currentLocation,
-          validation.choiceIssue === "truncated"
-            ? "回應被截斷，選項不完整"
-            : validation.choiceIssue === "extreme"
-            ? "原選項為無效填充文字"
-            : "AI 未產出選項"
-        );
-        if (newChoices.length >= 3) {
-          console.log("[Chat] Haiku 已生成選項");
-          result.text = injectChoices(validation.narrative, newChoices);
-        } else {
-          console.warn("[Chat] Haiku 生成失敗，回應將無選項");
-        }
-      }
-    }
 
     // 偵測日夜 / 地點 / 階段變化
     const newIsDaytime = detectTimeChange(result.text, gameState.isDaytime);
