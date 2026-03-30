@@ -35,7 +35,7 @@ export interface ParseResult {
 
 /**
  * 逐行解析標記格式文字，累加到 result 中
- * 可被 parseGameData 和 backfill 共用
+ * 可被 parseGameData 共用
  */
 export function parseTagLines(text: string, result: ParsedGameData): void {
   for (const line of text.split("\n")) {
