@@ -225,7 +225,8 @@ export async function updatePlayerStats(
     void supabase.from("player_stats_history").insert({
       session_id: sessionId,
       round_number: roundNumber,
-      game_data: gameData,
+      change_type: "game_data",
+      change_data: gameData,
     }).then(({ error: histErr }) => { if (histErr) console.warn("player_stats_history insert:", histErr.message); });
 
     return { ok: true };
