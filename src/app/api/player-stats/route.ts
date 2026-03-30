@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      silver: stats.silver,
-      items: stats.items,
+      silver: stats.silver ?? 0,
+      items: stats.items ?? [],
       followers: stats.followers ?? [],
       skills: stats.skills ?? [],
-      relationships: stats.relationships,
+      relationships: stats.relationships ?? {},
       updatedAt: stats.updated_at,
       exists: true,
     });
