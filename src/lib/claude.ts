@@ -44,14 +44,15 @@ export interface ClaudeCallResult {
 }
 
 /**
- * 呼叫 Claude API
+ * 呼叫 Claude API（含 529 過載自動重試）
  * @param systemPrompt - 字串（向後相容）或 content blocks 陣列（支援 prompt caching）
  */
 export async function callClaude(
   systemPrompt: string | SystemContentBlock[],
   messages: ClaudeMessage[],
   model: "sonnet" | "haiku" = "sonnet",
-  maxTokens: number = 6000
+  maxTokens: number = 6000,
+  maxRetries: number = 3
 ): Promise<ClaudeCallResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -64,38 +65,61 @@ export async function callClaude(
       ? systemPrompt
       : systemPrompt;
 
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-beta": "prompt-caching-2024-07-31",
-    },
-    body: JSON.stringify({
-      model: MODELS[model],
-      max_tokens: maxTokens,
-      system,
-      messages,
-    }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Claude API error (${response.status}): ${error}`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
+        },
+        body: JSON.stringify({
+          model: MODELS[model],
+          max_tokens: maxTokens,
+          system,
+          messages,
+        }),
+      });
+
+      // 529 過載錯誤：等待後重試
+      if (response.status === 529) {
+        const waitTime = 2000 + attempt * 1500; // 2s, 3.5s, 5s
+        console.warn(`[Claude API] 529 過載，第 ${attempt + 1}/${maxRetries} 次重試，等待 ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Claude API error (${response.status}): ${error}`);
+      }
+
+      const data: ClaudeResponse = await response.json();
+      const truncated = data.stop_reason === "max_tokens";
+
+      return {
+        text: data.content[0]?.text ?? "",
+        inputTokens: data.usage.input_tokens,
+        outputTokens: data.usage.output_tokens,
+        cacheCreationInputTokens: data.usage.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: data.usage.cache_read_input_tokens ?? 0,
+        truncated,
+      };
+    } catch (error) {
+      lastError = error as Error;
+      // 非 529 錯誤直接拋出
+      if (!lastError.message.includes('529')) {
+        throw lastError;
+      }
+    }
   }
 
-  const data: ClaudeResponse = await response.json();
-  const truncated = data.stop_reason === "max_tokens";
-
-  return {
-    text: data.content[0]?.text ?? "",
-    inputTokens: data.usage.input_tokens,
-    outputTokens: data.usage.output_tokens,
-    cacheCreationInputTokens: data.usage.cache_creation_input_tokens ?? 0,
-    cacheReadInputTokens: data.usage.cache_read_input_tokens ?? 0,
-    truncated,
-  };
+  // 重試次數用盡
+  throw new Error(`Claude API 伺服器忙碌中，請稍後再試（已重試 ${maxRetries} 次）`);
 }
 
 export interface ClaudeResult {
