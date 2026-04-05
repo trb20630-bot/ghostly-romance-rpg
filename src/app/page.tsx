@@ -174,6 +174,7 @@ export default function HomePage() {
               muted
               playsInline
               className="w-20 h-20 sm:w-28 sm:h-28 object-contain animate-ghost-float"
+              style={{ mixBlendMode: 'multiply' }}
             >
               <source src="/videos/candle-animation.mp4" type="video/mp4" />
             </video>
@@ -309,7 +310,7 @@ function GameRouter({
         <div className="max-w-sm w-full animate-fade-in-up">
           <div className="glass-panel ancient-frame corner-decor rounded-2xl p-7 text-center space-y-5">
             <div className="flex justify-center">
-              <video autoPlay loop muted playsInline className="w-14 h-14 object-contain animate-ghost-float">
+              <video autoPlay loop muted playsInline className="w-14 h-14 object-contain animate-ghost-float" style={{ mixBlendMode: 'multiply' }}>
                 <source src="/videos/candle-animation.mp4" type="video/mp4" />
               </video>
             </div>
