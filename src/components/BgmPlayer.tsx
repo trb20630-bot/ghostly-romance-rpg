@@ -303,7 +303,7 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
         className="w-8 h-8 rounded-full glass-panel flex items-center justify-center text-sm hover:border-gold/40 transition-all"
         title={enabled ? "靜音" : "開啟音樂"}
       >
-        <GameIcon name="sound" size={16} className={enabled ? "opacity-100" : "opacity-30"} />
+        <GameIcon name="sound" size={22} className={enabled ? "opacity-100" : "opacity-30"} />
       </button>
 
       <button

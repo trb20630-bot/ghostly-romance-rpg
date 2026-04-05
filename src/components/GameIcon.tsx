@@ -2,7 +2,7 @@ import { icons, type IconName } from "@/lib/icons";
 
 export default function GameIcon({
   name,
-  size = 20,
+  size = 24,
   className = "",
 }: {
   name: IconName;

@@ -484,7 +484,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
         {story.storyExportId && (
           <div className="glass-panel rounded-xl p-5 mt-8 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-gold/80 text-sm font-bold tracking-wider flex items-center gap-1.5"><GameIcon name="share" size={16} />分享作品</h3>
+              <h3 className="text-gold/80 text-sm font-bold tracking-wider flex items-center gap-1.5"><GameIcon name="share" size={22} />分享作品</h3>
               {shared && <span className="text-[10px] text-jade">已公開分享</span>}
             </div>
             {!shared ? (
@@ -514,7 +514,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
                 </div>
               ) : (
                 <button onClick={() => setShowShareOptions(true)} className="btn-ancient rounded-lg px-4 py-2 text-xs tracking-wider">
-                  <GameIcon name="share" size={14} className="mr-1" />分享到作品牆
+                  <GameIcon name="share" size={20} className="mr-1" />分享到作品牆
                 </button>
               )
             ) : (
