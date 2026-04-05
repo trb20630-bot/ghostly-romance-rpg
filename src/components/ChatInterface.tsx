@@ -6,6 +6,7 @@ import { getRecentHistory } from "@/lib/game-store";
 import { extractSceneTag, cleanSceneTag, isAbnormalTransition, logMusicSwitch, detectSceneFromContent, SCENE_BGM } from "@/lib/scene-bgm";
 import type { ChatMessage } from "@/types/game";
 import { authFetch } from "@/lib/api-client";
+import GameIcon from "./GameIcon";
 
 const PHASE_LABELS: Record<string, string> = {
   death: "現代篇",
@@ -779,7 +780,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   className="btn-ancient rounded-lg px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs tracking-wider whitespace-nowrap"
                   title="查看狀態"
                 >
-                  📊<span className="hidden sm:inline"> 狀態</span>
+                  <GameIcon name="backpack" size={16} /><span className="hidden sm:inline"> 狀態</span>
                 </button>
               </>
             )}
@@ -796,7 +797,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   }}
                   className="btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
                 >
-                  匯出故事
+                  <GameIcon name="export" size={14} className="mr-1" />匯出故事
                 </button>
                 <button
                   onClick={async () => {
@@ -810,7 +811,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                   }}
                   className="btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
                 >
-                  分享作品
+                  <GameIcon name="share" size={14} className="mr-1" />分享作品
                 </button>
               </div>
             )}
@@ -819,14 +820,14 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               className="hidden sm:block text-ghost-white/20 hover:text-gold/60 transition-colors text-sm"
               title="音樂不對？點我回報"
             >
-              🎵
+              <GameIcon name="sound" size={16} />
             </button>
             {onBackToSlots && (
               <button
                 onClick={handleSaveAndBack}
                 className="hidden sm:block btn-ancient rounded-lg px-3 py-1.5 text-xs tracking-wider whitespace-nowrap"
               >
-                返回角色列表
+                <GameIcon name="back" size={14} className="mr-1" />返回角色列表
               </button>
             )}
 
@@ -850,9 +851,9 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                           }
                           dispatch({ type: "SET_PHASE", payload: "export" });
                         }}
-                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors flex items-center gap-2"
                       >
-                        匯出故事
+                        <GameIcon name="export" size={14} />匯出故事
                       </button>
                       <button
                         onClick={async () => {
@@ -865,9 +866,9 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                           setShareResult(null);
                           setShowShareModal(true);
                         }}
-                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                        className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors flex items-center gap-2"
                       >
-                        分享作品
+                        <GameIcon name="share" size={14} />分享作品
                       </button>
                     </>
                   )}
@@ -878,16 +879,16 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                       setMusicFeedbackText("");
                       setShowMusicFeedback(true);
                     }}
-                    className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors"
+                    className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors flex items-center gap-2"
                   >
-                    音樂回報
+                    <GameIcon name="sound" size={14} />音樂回報
                   </button>
                   {onBackToSlots && (
                     <button
                       onClick={() => { setShowMoreMenu(false); handleSaveAndBack(); }}
-                      className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors border-t border-ghost-white/5"
+                      className="w-full px-4 py-2.5 text-left text-xs text-ghost-white/80 hover:text-gold hover:bg-gold/5 transition-colors border-t border-ghost-white/5 flex items-center gap-2"
                     >
-                      返回角色列表
+                      <GameIcon name="back" size={14} />返回角色列表
                     </button>
                   )}
                 </div>
@@ -1167,7 +1168,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
               <div className="space-y-4">
                 {/* 銀兩 */}
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">💰</span>
+                  <GameIcon name="wallet" size={22} />
                   <span className="text-sm text-gold/90 tracking-wider">銀兩</span>
                   <span className="ml-auto text-sm text-ghost-white font-bold">{statsData.silver} 兩</span>
                 </div>
@@ -1175,7 +1176,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 {/* 物品欄 */}
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">📦</span>
+                    <GameIcon name="backpack" size={22} />
                     <span className="text-sm text-gold/90 tracking-wider">物品欄</span>
                   </div>
                   {statsData.items.length === 0 ? (
@@ -1194,7 +1195,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 {/* 部屬 */}
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">👥</span>
+                    <GameIcon name="relationship" size={22} />
                     <span className="text-sm text-gold/90 tracking-wider">部屬</span>
                   </div>
                   {statsData.followers.length === 0 ? (
@@ -1232,7 +1233,7 @@ export default function ChatInterface({ playerId, onBackToSlots }: { playerId?: 
                 {/* 好感度 */}
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">❤️</span>
+                    <GameIcon name="affection" size={22} />
                     <span className="text-sm text-gold/90 tracking-wider">好感度</span>
                   </div>
                   {Object.keys(statsData.relationships).length === 0 ? (
