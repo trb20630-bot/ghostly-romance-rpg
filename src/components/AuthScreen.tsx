@@ -102,9 +102,7 @@ export default function AuthScreen({ onLogin }: Props) {
         {/* Title */}
         <div className="text-center mb-8">
           <div className="inline-block mb-3">
-            <video autoPlay loop muted playsInline className="w-16 h-16 sm:w-20 sm:h-20 object-contain animate-ghost-float inline-block" style={{ mixBlendMode: 'screen' }}>
-              <source src="/videos/candle-inverted.mp4" type="video/mp4" />
-            </video>
+            <span className="text-4xl sm:text-5xl animate-ghost-float inline-block">🏮</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-2">
             倩 女 幽 魂
