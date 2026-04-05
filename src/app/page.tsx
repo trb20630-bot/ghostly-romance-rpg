@@ -167,7 +167,17 @@ export default function HomePage() {
         onClick={() => setEntered(true)}
       >
         <div className="text-center animate-fade-in-up">
-          <div className="text-6xl sm:text-7xl mb-6 animate-ghost-float">🏮</div>
+          <div className="mb-6 flex justify-center">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-20 h-20 sm:w-28 sm:h-28 object-contain animate-ghost-float"
+            >
+              <source src="/videos/candle-animation.mp4" type="video/mp4" />
+            </video>
+          </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-gold tracking-[0.3em] mb-4">
             倩 女 幽 魂
           </h1>
@@ -298,7 +308,11 @@ function GameRouter({
       <div className="h-[100dvh] flex items-center justify-center p-4">
         <div className="max-w-sm w-full animate-fade-in-up">
           <div className="glass-panel ancient-frame corner-decor rounded-2xl p-7 text-center space-y-5">
-            <div className="text-4xl animate-ghost-float">🏮</div>
+            <div className="flex justify-center">
+              <video autoPlay loop muted playsInline className="w-14 h-14 object-contain animate-ghost-float">
+                <source src="/videos/candle-animation.mp4" type="video/mp4" />
+              </video>
+            </div>
             <h2 className="text-xl text-gold font-bold tracking-widest">為你的角色命名</h2>
             <p className="text-xs text-ghost-white/60 leading-relaxed">這個名字將用於遊戲中和匯出的故事</p>
             <input
