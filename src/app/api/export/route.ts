@@ -106,11 +106,12 @@ export async function POST(request: NextRequest) {
         }
 
         const totalChapters = allChunks.length;
+        send(`[TOTAL] ${totalChapters}`);
         const chapters: Array<{ number: number; title: string; content: string }> = [];
 
         for (let i = 0; i < allChunks.length; i++) {
           const { title, convs } = allChunks[i];
-          send(`[PROGRESS] ${i + 1}/${totalChapters} 正在改寫：${title}`);
+          send(`[PROGRESS] ${i + 1}/${totalChapters}|${title}`);
 
           try {
             const result = await callClaude(

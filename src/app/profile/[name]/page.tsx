@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import GameIcon from "@/components/GameIcon";
 
 interface StoryCard {
   id: string;
@@ -72,7 +73,7 @@ export default function ProfilePage() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="text-center mb-10">
-          <div className="text-4xl mb-3">🏮</div>
+          <div className="mb-3"><GameIcon name="lantern" size={72} /></div>
           <h1 className="text-xl text-gold font-bold tracking-widest">{authorName}</h1>
           <p className="text-xs text-ghost-white/40 mt-2">{stories.length} 部作品</p>
         </div>

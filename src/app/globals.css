@@ -33,7 +33,7 @@ html, body {
 
 /* ===== Background ===== */
 .bg-scene {
-  background-image: url('/bg-desktop.webp');
+  background-image: url('/bg-desktop.png');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;

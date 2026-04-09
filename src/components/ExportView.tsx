@@ -13,6 +13,9 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
   const [story, setStory] = useState<StoryExport & { storyExportId?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportProgress, setExportProgress] = useState("");
+  const [exportTotal, setExportTotal] = useState(0);
+  const [exportCurrent, setExportCurrent] = useState(0);
+  const [exportChapterTitle, setExportChapterTitle] = useState("");
   const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
   const [shareAnonymous, setShareAnonymous] = useState(false);
@@ -34,6 +37,9 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
     setLoading(true);
     setError("");
     setExportProgress("準備中...");
+    setExportTotal(0);
+    setExportCurrent(0);
+    setExportChapterTitle("");
     try {
       const conversations = messages
         .filter((m) => m.role !== "system")
@@ -91,8 +97,15 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
         for (const line of lines) {
           if (!line.trim()) continue;
 
-          if (line.startsWith("[PROGRESS] ")) {
-            setExportProgress(line.replace("[PROGRESS] ", ""));
+          if (line.startsWith("[TOTAL] ")) {
+            setExportTotal(parseInt(line.replace("[TOTAL] ", "")) || 0);
+          } else if (line.startsWith("[PROGRESS] ")) {
+            const progressData = line.replace("[PROGRESS] ", "");
+            const [fraction, chTitle] = progressData.split("|");
+            const current = parseInt(fraction.split("/")[0]) || 0;
+            setExportCurrent(current);
+            setExportChapterTitle(chTitle || "");
+            setExportProgress(progressData);
           } else if (line.startsWith("[CHAPTER] ")) {
             const parts = line.replace("[CHAPTER] ", "").split("|");
             const num = parseInt(parts[0]);
@@ -127,6 +140,9 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
     } finally {
       setLoading(false);
       setExportProgress("");
+      setExportTotal(0);
+      setExportCurrent(0);
+      setExportChapterTitle("");
     }
   }
 
@@ -353,13 +369,50 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
             {error && (
               <p className="text-blood-red text-sm mb-4 bg-blood-red/5 border border-blood-red/10 rounded-lg px-4 py-2">{error}</p>
             )}
-            <button
-              onClick={handleExport}
-              disabled={loading}
-              className="w-full btn-ancient rounded-xl py-3.5 text-lg tracking-widest font-bold disabled:opacity-40 mb-4"
-            >
-              {loading ? (exportProgress || "正在編纂故事⋯⋯") : "匯 出 為 小 說"}
-            </button>
+            {loading ? (
+              <div className="mb-4 space-y-4">
+                {/* 預估時間 */}
+                <p className="text-ghost-white/60 text-sm tracking-wider animate-pulse">
+                  {exportTotal > 0
+                    ? (() => {
+                        const remaining = Math.max(0, (exportTotal - exportCurrent + 1) * 15);
+                        const min = Math.floor(remaining / 60);
+                        const sec = remaining % 60;
+                        return `匯出中，預計還需要 ${min > 0 ? `${min} 分 ` : ""}${sec} 秒...`;
+                      })()
+                    : "匯出中，正在計算章節..."}
+                </p>
+
+                {/* 目前章節 */}
+                {exportChapterTitle && (
+                  <p className="text-gold/80 text-sm tracking-wider">
+                    正在撰寫第 {exportCurrent} 章：{exportChapterTitle}
+                  </p>
+                )}
+
+                {/* 進度條 + 百分比 */}
+                {exportTotal > 0 && (
+                  <div className="space-y-2">
+                    <div className="w-full h-3 bg-ghost-white/5 rounded-full overflow-hidden border border-ghost-white/10">
+                      <div
+                        className="h-full bg-gradient-to-r from-gold/60 to-gold/90 rounded-full transition-all duration-700 ease-out"
+                        style={{ width: `${Math.round(((exportCurrent - 1) / exportTotal) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-gold/60 text-xs text-center tabular-nums tracking-wider">
+                      進度：{Math.round(((exportCurrent - 1) / exportTotal) * 100)}%（第 {exportCurrent} / {exportTotal} 章）
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={handleExport}
+                className="w-full btn-ancient rounded-xl py-3.5 text-lg tracking-widest font-bold mb-4"
+              >
+                匯 出 為 小 說
+              </button>
+            )}
             <div className="flex justify-center gap-4">
               {game.phase !== "export" && (
                 <button onClick={() => dispatch({ type: "SET_PHASE", payload: "story" })} className="text-sm text-ghost-white/50 hover:text-ghost-white/85 transition-colors tracking-wider">返回遊戲</button>
@@ -484,7 +537,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
         {story.storyExportId && (
           <div className="glass-panel rounded-xl p-5 mt-8 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-gold/80 text-sm font-bold tracking-wider flex items-center gap-1.5"><GameIcon name="share" size={22} />分享作品</h3>
+              <h3 className="text-gold/80 text-sm font-bold tracking-wider flex items-center gap-1.5"><GameIcon name="share" size={28} />分享作品</h3>
               {shared && <span className="text-[10px] text-jade">已公開分享</span>}
             </div>
             {!shared ? (
@@ -514,7 +567,7 @@ export default function ExportView({ playerId, onBackToSlots }: { playerId?: str
                 </div>
               ) : (
                 <button onClick={() => setShowShareOptions(true)} className="btn-ancient rounded-lg px-4 py-2 text-xs tracking-wider">
-                  <GameIcon name="share" size={20} className="mr-1" />分享到作品牆
+                  <GameIcon name="share" size={24} className="mr-1" />分享到作品牆
                 </button>
               )
             ) : (

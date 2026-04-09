@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import SharePanel from "@/components/SharePanel";
 import BgmPlayer from "@/components/BgmPlayer";
+import GameIcon from "@/components/GameIcon";
 import { detectSceneFromContent } from "@/lib/scene-bgm";
 
 interface Chapter { number: number; title: string; content: string; }
@@ -263,7 +264,7 @@ export default function StoryPage() {
               onClick={handleReadAll}
               className={`rounded-lg px-3 py-2 text-xs tracking-wider transition-all ${readingAll ? "btn-ancient text-gold" : "text-ghost-white/30 border border-ghost-white/10 hover:border-gold/20 hover:text-gold/60"}`}
             >
-              {readingAll ? "⏹ 停止朗讀" : "🔊 朗讀全文"}
+              {readingAll ? <>⏹ 停止朗讀</> : <><GameIcon name="sound" size={20} className="inline-block align-middle" /> 朗讀全文</>}
             </button>
             <SharePanel
               storyId={storyId}

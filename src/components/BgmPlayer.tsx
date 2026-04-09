@@ -303,14 +303,14 @@ export default function BgmPlayer({ phase = "login", sceneTag, showSelector, duc
         className="w-8 h-8 rounded-full glass-panel flex items-center justify-center text-sm hover:border-gold/40 transition-all"
         title={enabled ? "靜音" : "開啟音樂"}
       >
-        <GameIcon name="sound" size={22} className={enabled ? "opacity-100" : "opacity-30"} />
+        <GameIcon name="sound" size={28} className={enabled ? "opacity-100" : "opacity-30"} />
       </button>
 
       <button
         onClick={() => setShowControls(!showControls)}
         className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-ghost-white/30 hover:text-ghost-white/60 transition-colors"
       >
-        {showControls ? "✕" : "♫"}
+        {showControls ? "✕" : <GameIcon name="music" size={18} />}
       </button>
 
       {showControls && (

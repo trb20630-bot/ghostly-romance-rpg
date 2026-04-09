@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import GameIcon from "./GameIcon";
 
 interface SessionInfo {
   id: string;
@@ -101,7 +102,7 @@ export default function SlotSelect({
         {/* Title */}
         <div className="text-center mb-6">
           <div className="inline-block mb-3">
-            <span className="text-4xl sm:text-5xl animate-ghost-float inline-block">🏮</span>
+            <span className="animate-ghost-float inline-block"><GameIcon name="lantern" size={72} /></span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-2">
             選 擇 角 色

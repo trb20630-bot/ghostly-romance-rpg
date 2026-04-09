@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useGame } from "./GameProvider";
+import GameIcon from "./GameIcon";
 
 const OCCUPATIONS = [
   "會計師", "記者", "護理師", "工程師",
@@ -34,7 +35,7 @@ export default function SetupPhase({ playerId, slotNumber, onBack }: { playerId?
         {/* Title Card */}
         <div className="text-center mb-6">
           <div className="inline-block mb-3">
-            <span className="text-4xl sm:text-5xl animate-ghost-float inline-block">🕯️</span>
+            <span className="animate-ghost-float inline-block"><GameIcon name="candle" size={72} /></span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gold tracking-widest mb-3">
             輪 迴 之 門

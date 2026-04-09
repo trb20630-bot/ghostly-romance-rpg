@@ -17,6 +17,18 @@ function getSupabase() {
 const SALT_ROUNDS = 10;
 
 /**
+ * 生成 6 位大寫英數字邀請碼
+ */
+function generateReferralCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 排除易混淆的 I/O/0/1
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+/**
  * 判斷密碼是否已經是 bcrypt hash
  */
 function isHashed(password: string): boolean {
@@ -50,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // ===== 註冊 =====
     if (action === "register") {
-      const { name, password } = body;
+      const { name, password, referralCode: inputReferralCode } = body;
 
       if (!name?.trim() || !password?.trim()) {
         return NextResponse.json({ error: "名稱和密碼不能為空" }, { status: 400 });
@@ -66,18 +78,94 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "此名號已被使用" }, { status: 409 });
       }
 
+      // 驗證邀請碼（如果有填）
+      let inviterId: string | null = null;
+      if (inputReferralCode && inputReferralCode.length === 6) {
+        const { data: inviter } = await supabase
+          .from("players")
+          .select("id")
+          .eq("referral_code", inputReferralCode.toUpperCase())
+          .maybeSingle();
+        if (inviter) {
+          inviterId = inviter.id;
+        }
+      }
+
       // 密碼 hash
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+      // 生成唯一邀請碼（重試最多 10 次）
+      let newReferralCode = "";
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const candidate = generateReferralCode();
+        const { data: codeExists } = await supabase
+          .from("players")
+          .select("id")
+          .eq("referral_code", candidate)
+          .maybeSingle();
+        if (!codeExists) {
+          newReferralCode = candidate;
+          break;
+        }
+      }
+
       const { data: player, error } = await supabase
         .from("players")
-        .insert({ name: name.trim(), password: hashedPassword })
+        .insert({
+          name: name.trim(),
+          password: hashedPassword,
+          referral_code: newReferralCode || null,
+          referred_by: inviterId,
+        })
         .select("id, name")
         .single();
 
       if (error) throw error;
 
-      return NextResponse.json({ player });
+      // 處理邀請獎勵
+      let referralBonus = false;
+      if (inviterId && player) {
+        try {
+          // 記錄邀請關係
+          await supabase.from("referral_records").insert({
+            inviter_id: inviterId,
+            invitee_id: player.id,
+            inviter_reward_coins: 15,
+            inviter_reward_rounds: 5,
+            invitee_reward_coins: 5,
+          });
+
+          // 邀請者獎勵：找到最新 session 加 15 墨幣
+          const { data: inviterSession } = await supabase
+            .from("game_sessions")
+            .select("id")
+            .eq("player_id", inviterId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (inviterSession) {
+            const { data: inviterStats } = await supabase
+              .from("player_stats")
+              .select("silver")
+              .eq("session_id", inviterSession.id)
+              .maybeSingle();
+
+            if (inviterStats) {
+              await supabase
+                .from("player_stats")
+                .update({ silver: (inviterStats.silver ?? 0) + 15 })
+                .eq("session_id", inviterSession.id);
+            }
+          }
+
+          referralBonus = true;
+        } catch (refErr) {
+          console.error("[auth] Referral reward error:", refErr);
+        }
+      }
+
+      return NextResponse.json({ player, referralBonus });
     }
 
     // ===== 登入（回傳玩家 + 所有角色列表 + JWT） =====

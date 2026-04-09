@@ -13,6 +13,8 @@ import type { ChatMessage, PlayerMemory, GamePhase } from "@/types/game";
 import { setAuthToken, clearAuthToken, authFetch, getAuthToken } from "@/lib/api-client";
 import { cleanSceneTag } from "@/lib/scene-bgm";
 import AnnouncementModal from "@/components/AnnouncementModal";
+import InviteModal from "@/components/InviteModal";
+import GameIcon from "@/components/GameIcon";
 
 interface PlayerInfo {
   id: string;
@@ -47,6 +49,56 @@ export default function HomePage() {
     Array<{ round_number: number; role: string; content: string; phase: string }>
   >([]);
   const [newSlotNumber, setNewSlotNumber] = useState<number>(1);
+  const [showInvite, setShowInvite] = useState(false);
+
+  // LINE Login callback：從 URL 讀取 token 並自動登入
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const lineToken = params.get("line_token");
+    const linePlayerId = params.get("line_player_id");
+    const linePlayerName = params.get("line_player_name");
+
+    if (lineToken && linePlayerId && linePlayerName) {
+      // 清除 URL 參數
+      window.history.replaceState({}, "", "/");
+
+      // 設定 auth 並進入大廳
+      setAuthToken(lineToken);
+      sessionStorage.setItem("playerId", linePlayerId);
+      sessionStorage.setItem("playerName", linePlayerName);
+
+      const playerInfo = { id: linePlayerId, name: linePlayerName };
+      setPlayer(playerInfo);
+      setEntered(true);
+
+      // 取得 sessions
+      authFetch("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "verify" }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          setSessions(data.sessions || []);
+          setScreen("slots");
+          // 首次彈出邀請 Modal
+          const inviteKey = `invite_shown_${linePlayerId}`;
+          if (!localStorage.getItem(inviteKey)) {
+            localStorage.setItem(inviteKey, "1");
+            setTimeout(() => setShowInvite(true), 800);
+          }
+        })
+        .catch(() => setScreen("slots"));
+    }
+
+    // 處理 LINE 錯誤
+    const lineError = params.get("line_error");
+    if (lineError) {
+      window.history.replaceState({}, "", "/");
+      console.warn("[LINE Login] Error:", lineError);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Heartbeat: update online status every 2 minutes
   useEffect(() => {
@@ -72,6 +124,12 @@ export default function HomePage() {
     }
     sessionStorage.setItem("playerId", result.player.id);
     sessionStorage.setItem("playerName", result.player.name);
+    // 每帳號彈一次邀請 Modal
+    const inviteKey = `invite_shown_${result.player.id}`;
+    if (!localStorage.getItem(inviteKey)) {
+      localStorage.setItem(inviteKey, "1");
+      setTimeout(() => setShowInvite(true), 800);
+    }
   }
 
   const [syncing, setSyncing] = useState(false);
@@ -167,7 +225,7 @@ export default function HomePage() {
         onClick={() => setEntered(true)}
       >
         <div className="text-center animate-fade-in-up">
-          <div className="text-6xl sm:text-7xl mb-6 animate-ghost-float">🏮</div>
+          <div className="mb-6 animate-ghost-float"><GameIcon name="lantern" size={108} /></div>
           <h1 className="text-3xl sm:text-4xl font-bold text-gold tracking-[0.3em] mb-4">
             倩 女 幽 魂
           </h1>
@@ -195,7 +253,7 @@ export default function HomePage() {
         {syncing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-night/80 backdrop-blur-sm">
             <div className="text-center animate-fade-in">
-              <div className="text-4xl animate-ghost-float mb-4">🕯️</div>
+              <div className="animate-ghost-float mb-4"><GameIcon name="candle" size={72} /></div>
               <p className="text-gold text-sm tracking-widest">正在同步遊戲資料...</p>
             </div>
           </div>
@@ -208,6 +266,12 @@ export default function HomePage() {
           onNewGame={handleNewGame}
           onLogout={handleLogout}
         />
+        {showInvite && (
+          <InviteModal
+            playerId={player.id}
+            onClose={() => setShowInvite(false)}
+          />
+        )}
       </>
     );
   }
@@ -245,7 +309,8 @@ function GameRouter({
   const [restored, setRestored] = useState(false);
 
   // Restore saved game state on mount
-  if (!restored) {
+  useEffect(() => {
+    if (restored) return;
     setRestored(true);
 
     if (savedSession) {
@@ -287,7 +352,8 @@ function GameRouter({
         dispatch({ type: "UPDATE_MEMORY", payload: savedMemory });
       }
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Prompt for character name if old save doesn't have one
   const [namePromptInput, setNamePromptInput] = useState("");
@@ -298,7 +364,7 @@ function GameRouter({
       <div className="h-[100dvh] flex items-center justify-center p-4">
         <div className="max-w-sm w-full animate-fade-in-up">
           <div className="glass-panel ancient-frame corner-decor rounded-2xl p-7 text-center space-y-5">
-            <div className="text-4xl animate-ghost-float">🏮</div>
+            <div className="animate-ghost-float"><GameIcon name="lantern" size={72} /></div>
             <h2 className="text-xl text-gold font-bold tracking-widest">為你的角色命名</h2>
             <p className="text-xs text-ghost-white/60 leading-relaxed">這個名字將用於遊戲中和匯出的故事</p>
             <input
