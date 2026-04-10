@@ -22,7 +22,7 @@ export default function AuthCallbackPage() {
       }
 
       const user = session.user;
-      const googleId = user.id;
+      const provider = user.app_metadata?.provider || 'google';
       const email = user.email || '';
       const displayName = user.user_metadata?.full_name || user.user_metadata?.name || '';
       const avatarUrl = user.user_metadata?.avatar_url || '';
@@ -30,18 +30,20 @@ export default function AuthCallbackPage() {
       // 取得 localStorage 中的邀請碼
       const referralCode = typeof window !== 'undefined' ? localStorage.getItem('referralCode') || '' : '';
 
+      // 根據 provider 呼叫對應的 sync endpoint
+      const syncUrl = provider === 'facebook'
+        ? '/api/auth/facebook/sync'
+        : '/api/auth/google/sync';
+      const syncBody = provider === 'facebook'
+        ? { facebookId: user.id, email, displayName, avatarUrl, referralCode }
+        : { googleId: user.id, email, displayName, avatarUrl, referralCode };
+
       try {
         // 同步到 players 表
-        const res = await fetch('/api/auth/google/sync', {
+        const res = await fetch(syncUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            googleId,
-            email,
-            displayName,
-            avatarUrl,
-            referralCode,
-          }),
+          body: JSON.stringify(syncBody),
         });
 
         const data = await res.json();

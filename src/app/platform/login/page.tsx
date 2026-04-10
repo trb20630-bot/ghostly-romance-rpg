@@ -253,7 +253,16 @@ export default function PlatformLogin() {
 
             {/* Facebook */}
             <button
-              onClick={() => showToast('Facebook 登入即將推出')}
+              onClick={async () => {
+                const supabase = createClient();
+                const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'facebook',
+                  options: {
+                    redirectTo: `${window.location.origin}/platform/auth/callback`,
+                  },
+                });
+                if (error) showToast('Facebook 登入失敗：' + error.message);
+              }}
               className="flex items-center justify-center gap-3 w-full py-3 rounded-xl font-medium text-white transition-all hover:brightness-110"
               style={{ backgroundColor: '#1877F2' }}
             >
