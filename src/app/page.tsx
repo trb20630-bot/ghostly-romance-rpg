@@ -89,6 +89,7 @@ export default function HomePage() {
           }
         })
         .catch(() => setScreen("slots"));
+      return; // LINE callback handled, skip session restore
     }
 
     // 處理 LINE 錯誤
@@ -96,6 +97,35 @@ export default function HomePage() {
     if (lineError) {
       window.history.replaceState({}, "", "/");
       console.warn("[LINE Login] Error:", lineError);
+    }
+
+    // Auto-restore session：檢查 sessionStorage 是否有有效 JWT
+    const existingToken = getAuthToken();
+    if (existingToken) {
+      authFetch("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "verify" }),
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error("Token invalid");
+          return r.json();
+        })
+        .then((data) => {
+          if (data.player) {
+            setPlayer({ id: data.player.id, name: data.player.name });
+            setSessions(data.sessions || []);
+            sessionStorage.setItem("playerId", data.player.id);
+            sessionStorage.setItem("playerName", data.player.name);
+            setEntered(true);
+            setScreen("slots");
+          }
+        })
+        .catch(() => {
+          // Token 過期或無效，清除並留在 auth 畫面
+          clearAuthToken();
+          sessionStorage.removeItem("playerId");
+          sessionStorage.removeItem("playerName");
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
