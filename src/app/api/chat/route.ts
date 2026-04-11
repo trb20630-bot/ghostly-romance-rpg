@@ -10,6 +10,7 @@ import { parseGameData, updatePlayerStats } from "@/lib/game-data-parser";
 import type { GameState, PlayerMemory, ChatMessage } from "@/types/game";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // 版本標記 — 用於確認 Vercel 部署的程式碼版本
 const CHAT_API_VERSION = "2026-03-29-v8-haiku-choice-check";

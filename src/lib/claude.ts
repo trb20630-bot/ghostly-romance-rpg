@@ -51,7 +51,7 @@ export async function callClaude(
   systemPrompt: string | SystemContentBlock[],
   messages: ClaudeMessage[],
   model: "sonnet" | "haiku" = "sonnet",
-  maxTokens: number = 6000,
+  maxTokens: number = 2500,
   maxRetries: number = 3
 ): Promise<ClaudeCallResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -87,7 +87,7 @@ export async function callClaude(
 
       // 529 過載錯誤：等待後重試
       if (response.status === 529) {
-        const waitTime = 2000 + attempt * 1500; // 2s, 3.5s, 5s
+        const waitTime = 500 + attempt * 500; // 0.5s, 1s, 1.5s
         console.warn(`[Claude API] 529 過載，第 ${attempt + 1}/${maxRetries} 次重試，等待 ${waitTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
